@@ -1098,8 +1098,9 @@ class TestViewOps(TestCase):
 
         self.assertEqual(expected1, out1)
         self.assertEqual(expected2, out2)
-'''
+
 class TestOldViewOps(TestCase):
+    @unittest.skip("Not Working for Spyre")
     def test_ravel(self, device):
         def _test_ravel(tensors, size, nc=False):
             for src in tensors:
@@ -1169,6 +1170,7 @@ class TestOldViewOps(TestCase):
         ]
         _test_ravel(tensors, 25, True)
 
+    @unittest.skip("Not Working for Spyre")
     # TODO: this should be refactored into the view ops test suite
     def test_empty_reshape(self, device):
         x = torch.randn(0, 6, device=device)
@@ -1178,7 +1180,8 @@ class TestOldViewOps(TestCase):
 
         # match NumPy semantics -- don't infer the size of dimension with a degree of freedom
         self.assertRaises(RuntimeError, lambda: x.reshape(0, -1))
-
+    
+    @unittest.skip("Not Working for Spyre")
     @skipIfTorchDynamo("TorchDynamo fails with unknown reason")
     def test_expand(self, device):
         tensor = torch.rand(1, 8, 1, device=device)
@@ -1217,11 +1220,13 @@ class TestOldViewOps(TestCase):
             torch.zeros(0, device=device).expand((0,)), torch.zeros(0, device=device)
         )
 
+    @unittest.skip("Not Working for Spyre")
     # TODO: this should be refactored into the view ops test suite
     def test_view_empty(self, device):
         x = torch.randn(0, 6, device=device)
         self.assertEqual((1, 0, 6, 1, 1), x.view(1, 0, 6, 1, 1).shape)
 
+    @unittest.skip("Not Working for Spyre")
     # TODO: this should be refactored into the view ops test suite
     @onlyNativeDeviceTypes
     def test_reshape(self, device):
@@ -1258,6 +1263,7 @@ class TestOldViewOps(TestCase):
             RuntimeError, lambda: x.reshape_as(torch.rand(10, device=device))
         )
 
+    @unittest.skip("Not Working for Spyre")
     def test_flatten(self, device):
         # Test that flatten returns 1-dim tensor when given a 0-dim tensor
         zero_dim_tensor = torch.tensor(123, device=device)
@@ -1458,13 +1464,15 @@ class TestOldViewOps(TestCase):
         y = x.clone().unsqueeze_(2)
         self.assertEqual(y, x.contiguous().view(2, 4, 1))
 
+    @unittest.skip("Not Working for Spyre")
     # unit test for special case transposed copy (see ATen/native/Copy.cpp for details)
     def test_big_transpose(self, device):
         t = torch.rand(456, 789, device=device)
         t1 = t.t().contiguous()
         t2 = torch.from_numpy(t.cpu().numpy().transpose())
         self.assertEqual(t1, t2)
-
+    
+    @unittest.skip("Not Working for Spyre")
     def test_T(self, device):
         a = torch.randn(2, 3, 4, device=device)
         t1 = a.T
@@ -1473,6 +1481,7 @@ class TestOldViewOps(TestCase):
         b = torch.randn(10, device=device)
         self.assertEqual(b, b.T)
 
+    @unittest.skip("Not Working for Spyre")
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
     def test_transposes(self, device, dtype):
         for op in ("T", "H", "mT", "mH", "adjoint"):
@@ -1490,6 +1499,7 @@ class TestOldViewOps(TestCase):
                     t2 = t2.conj()
                 self.assertEqual(t2, t1)
 
+    @unittest.skip("Not Working for Spyre")
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
     def test_transposes_errors(self, device, dtype):
         for op in ("H", "mT", "mH", "adjoint"):
@@ -1501,6 +1511,7 @@ class TestOldViewOps(TestCase):
                     if op == "adjoint":
                         t1 = t1()
 
+    @unittest.skip("Not Working for Spyre")
     def test_python_types(self, device):
         a1 = torch.randn((1, 2), device=device, dtype=torch.float64)
         a2 = torch.randn((1, 2), device=device, dtype=float)
@@ -1521,6 +1532,7 @@ class TestOldViewOps(TestCase):
         x.resize_as_(x)
         self.assertEqual(x.stride(), old_strides)
 
+    @unittest.skip("Not Working for Spyre")
     def test_memory_format_resize_as(self, device):
         def test_helper(shape, memory_format, device):
             xc = torch.randn(shape, device=device).contiguous(
@@ -1533,6 +1545,7 @@ class TestOldViewOps(TestCase):
         test_helper((10, 3, 32, 32), torch.channels_last, device)
         test_helper((3, 10, 3, 32, 32), torch.channels_last_3d, device)
 
+    @unittest.skip("Not Working for Spyre")
     def test_memory_format_resize_(self, device):
         def test_helper(shape, numel, memory_format, device):
             flat = torch.randn(numel, device=device)
@@ -1544,6 +1557,7 @@ class TestOldViewOps(TestCase):
             (3, 10, 3, 32, 32), 3 * 10 * 3 * 32 * 32, torch.channels_last_3d, device
         )
 
+    @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(torch.int64, torch.float, torch.complex128)
     def test_transpose_invalid(self, device, dtype):
@@ -1558,6 +1572,7 @@ class TestOldViewOps(TestCase):
             with self.assertRaisesRegex(IndexError, "Dimension out of range"):
                 fn(x, 0, 5)
 
+    @unittest.skip("Not Working for Spyre")
     @dtypes(torch.int64, torch.float, torch.complex128)
     def test_transpose_vs_numpy(self, device, dtype):
         for fn in (torch.swapdims, torch.swapaxes, torch.transpose):
@@ -1631,6 +1646,7 @@ class TestOldViewOps(TestCase):
                         np_res = tuple(torch.from_numpy(x) for x in np_res)
                         self.assertEqual(np_res, torch_res)
 
+    @unittest.skip("Not Working for Spyre")
     # TODO: are these view ops?
     @dtypes(*all_types_and_complex_and(torch.half))
     def test_atleast(self, device, dtype):
@@ -1745,6 +1761,7 @@ class TestOldViewOps(TestCase):
             res2 = torch.broadcast_tensors(*map(torch.empty, s0))[0].shape
             self.assertEqual(res1, res2)
 
+    @unittest.skip("Not Working for Spyre")
     # Skip BFloat16 since numpy does not support it
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool))
     def test_broadcast_to(self, device, dtype):
@@ -1774,6 +1791,7 @@ class TestOldViewOps(TestCase):
                 ):
                     torch.broadcast_to(t, s1)
 
+    @unittest.skip("Not Working for Spyre")
     def test_view(self, device):
         tensor = torch.rand(15, device=device)
         template = torch.rand(3, 5, device=device)
@@ -1859,6 +1877,7 @@ class TestOldViewOps(TestCase):
         self.assertEqual(tensor.view(6, 2, 1), contig_tensor.view(6, 2, 1))
         self.assertEqual(tensor.view(1, 6, 2, 1), contig_tensor.view(1, 6, 2, 1))
 
+    @unittest.skip("Not Working for Spyre")
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
     def test_reshape_view_semantics(self, device, dtype):
         tensor = make_tensor((15, 4), dtype=dtype, device=device)
@@ -1876,7 +1895,7 @@ class TestOldViewOps(TestCase):
         self.assertNotEqual(
             tensor.storage().data_ptr(), copy_tensor.storage().data_ptr()
         )
-
+    @unittest.skip("Not Working for Spyre")
     def test_contiguous(self, device):
         x = torch.randn(1, 16, 5, 5, device=device)
         self.assertTrue(x.is_contiguous())
@@ -1886,6 +1905,7 @@ class TestOldViewOps(TestCase):
         x.set_(x.storage(), 0, x.size(), stride)
         self.assertTrue(x.is_contiguous())
 
+    @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     # Skip BFloat16 since numpy does not support it
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool))
@@ -1919,6 +1939,7 @@ class TestOldViewOps(TestCase):
                         self.assertEqual(result_n, result1, msg=msg)
                         self.assertEqual(result_n, result2, msg=msg)
 
+    @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     # Skip BFloat16 since numpy does not support it
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool))
@@ -1966,6 +1987,7 @@ class TestOldViewOps(TestCase):
                         self.assertEqual(result_n, result_1, msg=msg)
                         self.assertEqual(result_n, result_2, msg=msg)
 
+    @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     def test_tensor_split_errors(self, device):
         S = 10
@@ -2032,6 +2054,7 @@ class TestOldViewOps(TestCase):
         ):
             torch.tensor_split(torch.rand(S, device=device), torch.tensor(((1,),)), 0)
 
+    @unittest.skip("Not Working for Spyre")
     def test_resize_all_dtypes_and_devices(self, device):
         shape = (2, 2)
         for dt in all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool):
@@ -2039,6 +2062,7 @@ class TestOldViewOps(TestCase):
             x.resize_(shape)
             self.assertEqual(shape, x.shape)
 
+    @unittest.skip("Not Working for Spyre")
     def test_resize_as_all_dtypes_and_devices(self, device):
         for dt in all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool):
             x = torch.tensor([[1, 2], [3, 4], [5, 6]], dtype=dt, device=device)
@@ -2057,7 +2081,8 @@ class TestOldViewOps(TestCase):
             x.resize_([8, 8, 2**29, 2**29])
         with self.assertRaisesRegex(RuntimeError, "Stride calculation overflowed"):
             x.resize_([0, 4, 2305843009213693952])
-
+    
+    @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     def test_as_strided_overflow_storage_offset(self, device):
         t = torch.randn(2, 3, device=device)
@@ -2070,6 +2095,7 @@ class TestOldViewOps(TestCase):
         ):
             torch.as_strided(t, [1], [1], 2**61 - 1)
 
+    @unittest.skip("Not Working for Spyre")
     def test_view_all_dtypes_and_devices(self, device):
         for dt in all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool):
             x = torch.tensor([[1, 2], [3, 4], [5, 6]], dtype=dt, device=device)
@@ -2110,9 +2136,10 @@ class TestOldViewOps(TestCase):
         # in debug build.
         t.crow_indices()
         t.col_indices()
-'''
-instantiate_device_type_tests(TestViewOps, globals(), include_lazy=True, only_for=("privateuse1",))
-#instantiate_device_type_tests(TestOldViewOps, globals(), only_for=("privateuse1",))
+
+
+instantiate_device_type_tests(TestViewOps, globals(), only_for=("privateuse1",))
+instantiate_device_type_tests(TestOldViewOps, globals(), only_for=("privateuse1",))
 
 if __name__ == "__main__":
     run_tests()
