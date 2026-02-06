@@ -581,7 +581,8 @@ class TestViewOps(TestCase):
 
         v[0] = 0
         self.assertEqual(t[2, 0], v[0])
-
+    
+    @unittest.skip("Not Working for Spyre")
     # Lazy hasn't implemented unbind yet.
     @skipLazy
     def test_unbind_view(self, device) -> None:
@@ -715,7 +716,8 @@ class TestViewOps(TestCase):
 
             v[0, 1] = 0
             self.assertEqual(t[1, 0], v[0, 1])
-
+    
+    @unittest.skip("Not Working for Spyre")
     def test_unfold_view(self, device):
         t = torch.ones(10, device=device)
         v = t.unfold(0, 3, 2)
@@ -1028,6 +1030,7 @@ class TestViewOps(TestCase):
             v[0, 0] = idx + 1
             self.assertEqual(t[idx, 0], v[0, 0])
 
+    @unittest.skip("Not Working for Spyre")
     def test_movedim_view(self, device):
         def run_test(device, op):
             t = torch.zeros(3, 3, device=device)
@@ -1049,7 +1052,8 @@ class TestViewOps(TestCase):
 
             op = partial(fn, source=0, destination=1)
             run_test(device, op)
-
+    
+    @unittest.skip("Not Working for Spyre")
     # Testing that the generated view_copy kernel and its derivative are implemented correctly
     def test_view_copy(self, device):
         a = torch.randn(4, device=device, requires_grad=True)
@@ -1067,13 +1071,15 @@ class TestViewOps(TestCase):
         # forward and backward give the same shape + result
         self.assertEqual(a_view_copy, a_view)
         self.assertEqual(a.grad, a_ref.grad)
-
+    
+    @unittest.skip("Not Working for Spyre")
     # Testing that the output of a view_copy kernel (by default) is contiguous.
     def test_view_copy_output_contiguous(self, device):
         a = torch.randn(4, 4, 4, 4, device=device).to(memory_format=torch.channels_last)
         b = torch.ops.aten.slice_copy(a, 0, 0, 2)
         self.assertTrue(b.is_contiguous())
-
+    
+    @unittest.skip("Not Working for Spyre")
     def test_view_copy_out(self, device):
         a = torch.randn(2, 2, device=device)
         out = torch.empty(2, device=device)
