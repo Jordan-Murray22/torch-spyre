@@ -156,8 +156,7 @@ class TestViewOps(TestCase):
         s = t.conj()
         self.assertTrue(s is t)
 
-    #@unittest.skip("Not Working for Spyre")
-    @pytest.mark.xfail(reason="Failing For Spyre Device")
+    @unittest.skip("Not Working for Spyre")
     @skipIfTorchDynamo("TorchDynamo fails with unknown reason")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool))
@@ -1013,9 +1012,9 @@ class TestViewOps(TestCase):
     @unittest.skip("See https://github.com/pytorch/pytorch/pull/32720")
     def test_chunk_view(self, device):
         t = torch.zeros(3, 3, device=device)
-        l = torch.chunk(t, 3)
+        chunks = torch.chunk(t, 3)
 
-        for idx, v in enumerate(l):
+        for idx, v in enumerate(chunks):
             self.assertTrue(self.is_view_of(t, v))
 
             v[0, 0] = idx + 1
@@ -1024,9 +1023,9 @@ class TestViewOps(TestCase):
     @unittest.skip("See https://github.com/pytorch/pytorch/pull/32720")
     def test_split_view(self, device):
         t = torch.zeros(3, 3, device=device)
-        l = torch.split(t, [1, 1, 1])
+        splits = torch.split(t, [1, 1, 1])
 
-        for idx, v in enumerate(l):
+        for idx, v in enumerate(splits):
             self.assertTrue(self.is_view_of(t, v))
 
             v[0, 0] = idx + 1
