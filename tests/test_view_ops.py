@@ -38,6 +38,7 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 
+import pytest
 
 # TODO: replace this with make_tensor() in common_utils.py
 def _generate_input(shape, dtype, device, with_extremal):
@@ -155,7 +156,8 @@ class TestViewOps(TestCase):
         s = t.conj()
         self.assertTrue(s is t)
 
-    @unittest.skip("Not Working for Spyre")
+    #@unittest.skip("Not Working for Spyre")
+    @pytest.mark.xfail(reason="Failing For Spyre Device")
     @skipIfTorchDynamo("TorchDynamo fails with unknown reason")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool))
@@ -2136,7 +2138,6 @@ class TestOldViewOps(TestCase):
         # in debug build.
         t.crow_indices()
         t.col_indices()
-
 
 instantiate_device_type_tests(TestViewOps, globals(), only_for=("privateuse1",))
 instantiate_device_type_tests(TestOldViewOps, globals(), only_for=("privateuse1",))
