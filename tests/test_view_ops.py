@@ -38,7 +38,6 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 
-import pytest
 
 # TODO: replace this with make_tensor() in common_utils.py
 def _generate_input(shape, dtype, device, with_extremal):
@@ -312,6 +311,7 @@ class TestViewOps(TestCase):
                 RuntimeError, rf"self.stride\(1\) must be divisible by {size_ratio}"
             ):
                 a.view(view_dtype)
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     def test_view_as_complex(self, device):
@@ -405,7 +405,7 @@ class TestViewOps(TestCase):
         res = torch.view_as_real(x)
         self.assertTrue(self.is_view_of(x, res))
         self.assertEqual(res.shape, torch.Size([2]))
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
@@ -418,7 +418,7 @@ class TestViewOps(TestCase):
         a_split_dim1 = a.tensor_split(7, 1)
         for a_split_dim1_tensor in a_split_dim1:
             self.assertTrue(self.is_view_of(a, a_split_dim1_tensor))
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
@@ -430,7 +430,7 @@ class TestViewOps(TestCase):
             self.assertTrue(self.is_view_of(t, t_hsplit_tensor))
         t[2, 2, 2] = 7
         self.assertEqual(t_hsplit[1][2, 0, 2], t[2, 2, 2])
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
@@ -442,7 +442,7 @@ class TestViewOps(TestCase):
             self.assertTrue(self.is_view_of(t, t_vsplit_tensor))
         t[2, 2, 2] = 7
         self.assertEqual(t_vsplit[1][0, 2, 2], t[2, 2, 2])
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bfloat16, torch.bool))
@@ -454,7 +454,7 @@ class TestViewOps(TestCase):
             self.assertTrue(self.is_view_of(t, t_dsplit_tensor))
         t[2, 2, 2] = 7
         self.assertEqual(t_dsplit[1][2, 2, 0], t[2, 2, 2])
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and(torch.half, torch.bfloat16))
@@ -464,7 +464,7 @@ class TestViewOps(TestCase):
 
         with self.assertRaises(RuntimeError):
             torch.imag(t)
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     @dtypes(*complex_types())
@@ -582,7 +582,7 @@ class TestViewOps(TestCase):
 
         v[0] = 0
         self.assertEqual(t[2, 0], v[0])
-    
+
     @unittest.skip("Not Working for Spyre")
     # Lazy hasn't implemented unbind yet.
     @skipLazy
@@ -717,7 +717,7 @@ class TestViewOps(TestCase):
 
             v[0, 1] = 0
             self.assertEqual(t[1, 0], v[0, 1])
-    
+
     @unittest.skip("Not Working for Spyre")
     def test_unfold_view(self, device):
         t = torch.ones(10, device=device)
@@ -1053,7 +1053,7 @@ class TestViewOps(TestCase):
 
             op = partial(fn, source=0, destination=1)
             run_test(device, op)
-    
+
     @unittest.skip("Not Working for Spyre")
     # Testing that the generated view_copy kernel and its derivative are implemented correctly
     def test_view_copy(self, device):
@@ -1072,14 +1072,14 @@ class TestViewOps(TestCase):
         # forward and backward give the same shape + result
         self.assertEqual(a_view_copy, a_view)
         self.assertEqual(a.grad, a_ref.grad)
-    
+
     @unittest.skip("Not Working for Spyre")
     # Testing that the output of a view_copy kernel (by default) is contiguous.
     def test_view_copy_output_contiguous(self, device):
         a = torch.randn(4, 4, 4, 4, device=device).to(memory_format=torch.channels_last)
         b = torch.ops.aten.slice_copy(a, 0, 0, 2)
         self.assertTrue(b.is_contiguous())
-    
+
     @unittest.skip("Not Working for Spyre")
     def test_view_copy_out(self, device):
         a = torch.randn(2, 2, device=device)
@@ -1099,6 +1099,7 @@ class TestViewOps(TestCase):
 
         self.assertEqual(expected1, out1)
         self.assertEqual(expected2, out2)
+
 
 class TestOldViewOps(TestCase):
     @unittest.skip("Not Working for Spyre")
@@ -1181,7 +1182,7 @@ class TestOldViewOps(TestCase):
 
         # match NumPy semantics -- don't infer the size of dimension with a degree of freedom
         self.assertRaises(RuntimeError, lambda: x.reshape(0, -1))
-    
+
     @unittest.skip("Not Working for Spyre")
     @skipIfTorchDynamo("TorchDynamo fails with unknown reason")
     def test_expand(self, device):
@@ -1472,7 +1473,7 @@ class TestOldViewOps(TestCase):
         t1 = t.t().contiguous()
         t2 = torch.from_numpy(t.cpu().numpy().transpose())
         self.assertEqual(t1, t2)
-    
+
     @unittest.skip("Not Working for Spyre")
     def test_T(self, device):
         a = torch.randn(2, 3, 4, device=device)
@@ -1896,6 +1897,7 @@ class TestOldViewOps(TestCase):
         self.assertNotEqual(
             tensor.storage().data_ptr(), copy_tensor.storage().data_ptr()
         )
+
     @unittest.skip("Not Working for Spyre")
     def test_contiguous(self, device):
         x = torch.randn(1, 16, 5, 5, device=device)
@@ -2082,7 +2084,7 @@ class TestOldViewOps(TestCase):
             x.resize_([8, 8, 2**29, 2**29])
         with self.assertRaisesRegex(RuntimeError, "Stride calculation overflowed"):
             x.resize_([0, 4, 2305843009213693952])
-    
+
     @unittest.skip("Not Working for Spyre")
     @onlyNativeDeviceTypes
     def test_as_strided_overflow_storage_offset(self, device):
@@ -2137,6 +2139,7 @@ class TestOldViewOps(TestCase):
         # in debug build.
         t.crow_indices()
         t.col_indices()
+
 
 instantiate_device_type_tests(TestViewOps, globals(), only_for=("privateuse1",))
 instantiate_device_type_tests(TestOldViewOps, globals(), only_for=("privateuse1",))
