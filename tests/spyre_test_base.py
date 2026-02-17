@@ -1,20 +1,16 @@
-# torch_spyre/test/spyre_test_base.py
-
-# DO NOT import common_device_type — runpy.run_path provides it via globals()
-
 import torch
-import torch_spyre  # Register the backend
 import re
-from torch.testing._internal.common_device_type import (DeviceTypeTestBase)
+import unittest
+from functools import wraps
 
 DEFAULT_FLOATING_PRECISION = 1e-3
 
 DISABLED_TESTS = {
     "TestViewOps": {
-        "test_reshape_noncontiguous_spyre",      # Known limitation
+        "test_reshape_noncontiguous_spyre",  # Known limitation
         "test_view_dtype_new",
         "test_view_dtype_upsize_errors",
-        "test_view_as_complex",           # Complex not supported
+        "test_view_as_complex",  # Complex not supported
         "test_view_as_real",
         "test_view_tensor_split",
         "test_view_tensor_hsplit",
@@ -94,7 +90,7 @@ DISABLED_TESTS = {
         "test_view_all_dtypes_and_devices",
     },
     "TestCommon": {
-        "test_compare_cpu_cholesky_.*",    # Decomposition not implemented
+        "test_compare_cpu_cholesky_.*",  # Decomposition not implemented
     },
 }
 
@@ -104,38 +100,106 @@ PRECISION_OVERRIDES = {
     "test_batch_norm": 1e-1,
 }
 
-class SpyreTestBase(DeviceTypeTestBase):  # DeviceTypeTestBase available via globals()
-    device_type = 'spyre'
+
+# ---------------------------------------------------------------------------
+# Match infrastructure — adapted from pytorch/xla pytorch_test_base.py
+# ---------------------------------------------------------------------------
+class MatchSet(object):
+    def __init__(self):
+        self.exact = set()
+        self.regex = set()
+
+
+def prepare_match_set(s):
+    ps = dict()
+    for k, v in s.items():
+        mset = MatchSet()
+        for m in v:
+            if re.match(r"\w+$", m):
+                mset.exact.add(m)
+            else:
+                mset.regex.add(m)
+        ps[k] = mset
+    return ps
+
+
+def match_name(name, mset):
+    if name in mset.exact:
+        return True
+    for m in mset.regex:
+        if re.match(m, name):
+            return True
+    return False
+
+
+# Pre-process once at import time
+DISABLED_TESTS_MATCH = prepare_match_set(DISABLED_TESTS)
+
+
+def _get_disabled_mset(cls_name, generic_name):
+    return DISABLED_TESTS_MATCH.get(cls_name) or DISABLED_TESTS_MATCH.get(generic_name)
+
+
+# Remove built-in PrivateUse1TestBase so only SpyreTestBase handles
+# the privateuse1 device type.  This prevents the nondeterministic
+# overwrite when list(set(...)) randomizes order.
+# TODO: figure out why this filter is needed - expected to use default PrivateUse1TestBase
+device_type_test_bases[:] = [
+    b for b in device_type_test_bases if b is not PrivateUse1TestBase
+]
+
+
+class SpyreTestBase(PrivateUse1TestBase):  # PrivateUse1TestBase injected via globals()
+    device_type = "privateuse1"
     precision = DEFAULT_FLOATING_PRECISION
-    
+
     unsupported_dtypes = {
-        torch.complex32, torch.complex64, torch.complex128,
+        torch.complex32,
+        torch.complex64,
+        torch.complex128,
     }
-    
+
     @classmethod
     def instantiate_test(cls, name, test, *, generic_cls):
-        test_name = name + '_' + cls.device_type
-        class_name = generic_cls.__name__
-        
-        # Check disabled tests
-        if class_name in DISABLED_TESTS:
-            disabled = DISABLED_TESTS[class_name]
-            for pattern in disabled:
-                if re.match(pattern, test_name) or re.match(pattern, name):
-                    @wraps(test)
-                    def skipped_test(self, test=test):
-                        raise unittest.SkipTest('skipped on Spyre')
-                        setattr(cls, test_name, skipped_test)
-                        return
-        
-        # Apply precision overrides
-        if name in PRECISION_OVERRIDES:
-            cls.precision = PRECISION_OVERRIDES[name]
-        else:
-            cls.precision = DEFAULT_FLOATING_PRECISION
-        
-        # Delegate to parent for actual instantiation
+        # Resolve the actual device name (privateuse1 -> spyre)
+        cls_device_type = (
+            cls.device_type
+            if cls.device_type != "privateuse1"
+            else torch._C._get_privateuse1_backend_name()
+        )
+        test_name_with_device = name + "_" + cls_device_type
+
+        # Look up disabled set by both the generated class name
+        # (e.g. TestViewOpsPRIVATEUSE1) and the generic class name
+        # (e.g. TestViewOps)
+        disabled_mset = _get_disabled_mset(cls.__name__, generic_cls.__name__)
+
+        base_is_disabled = disabled_mset is not None and (
+            match_name(name, disabled_mset)
+            or match_name(test_name_with_device, disabled_mset)
+        )
+
+        # Per-test precision override
+        cls.precision = PRECISION_OVERRIDES.get(name, DEFAULT_FLOATING_PRECISION)
+
+        # ── Snapshot existing methods, let parent do all the work ──────────
+        existing_methods = set(cls.__dict__.keys())
         super().instantiate_test(name, test, generic_cls=generic_cls)
+        new_methods = set(cls.__dict__.keys()) - existing_methods
+
+        @wraps(test)
+        def skip_test(self, test=test):
+            raise unittest.SkipTest("Skipped for Spyre")
+
+        for method_name in new_methods:
+            should_skip = base_is_disabled
+
+            # Check if this specific variant matches a disabled pattern
+            if not should_skip and disabled_mset is not None:
+                should_skip = match_name(method_name, disabled_mset)
+
+            if should_skip:
+                setattr(cls, method_name, skip_test)
 
 
 TEST_CLASS = SpyreTestBase
