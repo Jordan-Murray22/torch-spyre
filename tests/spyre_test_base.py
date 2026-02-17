@@ -144,12 +144,15 @@ def _get_disabled_mset(cls_name, generic_name):
 # the privateuse1 device type.  This prevents the nondeterministic
 # overwrite when list(set(...)) randomizes order.
 # TODO: figure out why this filter is needed - expected to use default PrivateUse1TestBase
-device_type_test_bases[:] = [
-    b for b in device_type_test_bases if b is not PrivateUse1TestBase
+device_type_test_bases[:] = [  # type: ignore[name-defined] # noqa: F821
+    b
+    for b in device_type_test_bases  # type: ignore[name-defined] # noqa: F821
+    if b is not PrivateUse1TestBase  # type: ignore[name-defined] # noqa: F821
 ]
 
 
-class SpyreTestBase(PrivateUse1TestBase):  # PrivateUse1TestBase injected via globals()
+# PrivateUse1TestBase injected via globals()
+class SpyreTestBase(PrivateUse1TestBase):  # type: ignore[name-defined] # noqa: F821
     device_type = "privateuse1"
     precision = DEFAULT_FLOATING_PRECISION
 
