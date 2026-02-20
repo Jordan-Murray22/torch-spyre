@@ -6,110 +6,71 @@ from functools import wraps
 DEFAULT_FLOATING_PRECISION = 1e-3
 
 DISABLED_TESTS = {
-    "TestViewOps": {
-        "test_reshape_noncontiguous_spyre",  # Known limitation
-        "test_view_dtype_new",
-        "test_view_dtype_upsize_errors",
-        "test_view_as_complex",  # Complex not supported
-        "test_view_as_real",
-        "test_view_tensor_split",
-        "test_view_tensor_hsplit",
-        "test_view_tensor_vsplit",
-        "test_view_tensor_dsplit",
-        "test_imag_noncomplex",
-        "test_real_imag_view",
-        "test_conj_imag_view",
-        "test_conj_view_with_shared_memory",
-        "test_set_real_imag",
-        "test_diagonal_view",
-        "test_select_view",
-        "test_unbind_view",
-        "test_expand_view",
-        "test_expand_as_view",
-        "test_narrow_view",
-        "test_permute_view",
-        "test_transpose_view",
-        "test_transpose_inplace_view",
-        "test_t_view",
-        "test_t_inplace_view",
-        "test_T_view",
-        "test_unfold_view",
-        "test_squeeze_view",
-        "test_squeeze_inplace_view",
-        "test_unsqueeze_view",
-        "test_unsqueeze_inplace_view",
-        "test_as_strided_view",
-        "test_as_strided_inplace_view",
-        "test_view_view",
-        "test_view_as_view",
-        "test_contiguous_nonview",
-        "test_reshape_view",
-        "test_reshape_as_view",
-        "test_reshape_nonview",
-        "test_flatten_view",
-        "test_flatten_nonview",
-        "test_basic_indexing_slice_view",
-        "test_basic_indexing_ellipses_view",
-        "test_basic_indexing_newaxis_view",
-        "test_advanced_indexing_nonview",
-        "test_advanced_indexing_assignment",
-        "test_chunk_view",
-        "test_split_view",
-        "test_movedim_view",
-        "test_view_copy",
-        "test_view_copy_output_contiguous",
-        "test_view_copy_out",
-    },
-    "TestOldViewOps": {
-        "test_ravel",
-        "test_empty_reshape",
-        "test_expand",
-        "test_view_empty",
-        "test_reshape",
-        "test_flatten",
-        "test_big_transpose",
-        "test_T",
-        "test_transposes",
-        "test_transposes_errors",
-        "test_python_types",
-        "test_memory_format_resize_as",
-        "test_memory_format_resize_",
-        "test_transpose_invalid",
-        "test_transpose_vs_numpy",
-        "test_atleast",
-        "test_broadcast_to",
-        "test_view",
-        "test_reshape_view_semantics",
-        "test_contiguous",
-        "test_tensor_split_sections",
-        "test_tensor_split_indices",
-        "test_tensor_split_errors",
-        "test_resize_all_dtypes_and_devices",
-        "test_resize_as_all_dtypes_and_devices",
-        "test_as_strided_overflow_storage_offset",
-        "test_view_all_dtypes_and_devices",
-    },
-    "TestCommon": {
-        "test_compare_cpu_cholesky_.*",  # Decomposition not implemented
+    "TestViewOps": {  # Verifies that view-related tensor operations (ex. view, reshape, squeeze/unsqueeze, etc.) produce correct shapes, preserve data, and follow PyTorch’s current aliasing and memory-sharing semantics.
+        "test_view_dtype_new",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/648
+        "test_view_dtype_upsize_errors",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/650
+        "test_view_as_complex",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651 & Complex Not supported
+        # "test_view_as_real", # Caught with Unsupported dtype filter https://github.com/torch-spyre/torch-spyre/issues/652
+        "test_view_tensor_split",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/653
+        "test_view_tensor_hsplit",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/674
+        "test_view_tensor_vsplit",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/675
+        "test_view_tensor_dsplit",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/676
+        "test_imag_noncomplex",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/677
+        # "test_real_imag_view", # Caught with Unsupported dtype filter https://github.com/torch-spyre/torch-spyre/issues/694
+        # "test_conj_imag_view", # Caught with Unsupported dtype filter https://github.com/torch-spyre/torch-spyre/issues/697
+        "test_conj_view_with_shared_memory",  # Signal Received: 8 (Floating point exception) https://github.com/torch-spyre/torch-spyre/issues/678
+        # "test_set_real_imag", # Caught with Unsupported dtype filter https://github.com/torch-spyre/torch-spyre/issues/700
+        "test_diagonal_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_select_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_unbind_view",  # NotImplementedError aten::zero_ https://github.com/torch-spyre/torch-spyre/issues/630
+        "test_expand_view",  # RuntimeError: aten::expand() takes 2 positional argument(s) but 3 was/were given https://github.com/torch-spyre/torch-spyre/issues/606
+        "test_expand_as_view",  # RuntimeError: aten::expand() takes 2 positional argument(s) but 3 was/were given https://github.com/torch-spyre/torch-spyre/issues/606
+        "test_narrow_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_permute_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_transpose_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_transpose_inplace_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_t_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_t_inplace_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_T_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_unfold_view",  # NotImplementedError aten::unfold https://github.com/torch-spyre/torch-spyre/issues/688
+        "test_squeeze_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_squeeze_inplace_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_unsqueeze_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_unsqueeze_inplace_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_as_strided_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_as_strided_inplace_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_view_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_view_as_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_contiguous_nonview",  # Failing with corrupted double-linked list https://github.com/torch-spyre/torch-spyre/issues/689
+        "test_reshape_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_reshape_as_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_reshape_nonview",  # Failing with smallbin double linked list corrupted https://github.com/torch-spyre/torch-spyre/issues/690
+        "test_flatten_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_flatten_nonview",  # Signal Received: 6 corrupted size vs. prev_size https://github.com/torch-spyre/torch-spyre/issues/691
+        "test_basic_indexing_slice_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_basic_indexing_ellipses_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_basic_indexing_newaxis_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_advanced_indexing_nonview",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_advanced_indexing_assignment",  # NotImplementedError aten::_index_put_impl_ https://github.com/torch-spyre/torch-spyre/issues/692
+        "test_movedim_view",  # NotImplementedError aten::zero_ https://github.com/torch-spyre/torch-spyre/issues/630
+        "test_view_copy",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_view_copy_output_contiguous",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_view_copy_out",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
     },
 }
 
-PRECISION_OVERRIDES = {
-    "test_sum": 1e-2,
-    "test_softmax": 1e-3,
-    "test_batch_norm": 1e-1,
-}
+# TODO: Add overrides for specific cases when we need them
+PRECISION_OVERRIDES = {}  # type: ignore[var-annotated]
 
 
-# ---------------------------------------------------------------------------
 # Match infrastructure — adapted from pytorch/xla pytorch_test_base.py
-# ---------------------------------------------------------------------------
 class MatchSet(object):
     def __init__(self):
         self.exact = set()
         self.regex = set()
 
 
+# Converts a dict of lists into a dict of MatchSet objects, categorizing each match string as either an exact match (alphanumeric) or a regex pattern.
 def prepare_match_set(s):
     ps = dict()
     for k, v in s.items():
@@ -123,6 +84,7 @@ def prepare_match_set(s):
     return ps
 
 
+# Returns True if the given name matches either an exact string in the MatchSet or any of its regex patterns, otherwise returns False.
 def match_name(name, mset):
     if name in mset.exact:
         return True
@@ -156,10 +118,18 @@ class SpyreTestBase(PrivateUse1TestBase):  # type: ignore[name-defined] # noqa: 
     device_type = "privateuse1"
     precision = DEFAULT_FLOATING_PRECISION
 
+    # For testing the cases that are turned off automatically by the data type filter, setting to true will enable the tests that are in the unsupported_dtypes dict
+    test_unsup_dtypes = False  # Default is False
+
     unsupported_dtypes = {
         torch.complex32,
         torch.complex64,
         torch.complex128,
+        # torch.float64, # Not supported on Spyre but leaving commented so we see test_conj_self tests pass
+        # torch.bfloat16, # Not supported on Spyre but leaving commented so we see test_conj_self tests pass
+        # torch.int16, # Not supported on Spyre but leaving commented so we see test_conj_self tests pass
+        # torch.int32, # Not supported on Spyre but leaving commented so we see test_conj_self tests pass
+        # torch.uint8, # Not supported on Spyre but leaving commented so we see test_conj_self tests pass
     }
 
     @classmethod
@@ -182,7 +152,7 @@ class SpyreTestBase(PrivateUse1TestBase):  # type: ignore[name-defined] # noqa: 
             or match_name(test_name_with_device, disabled_mset)
         )
 
-        # Per-test precision override
+        # Per-test precision override (no overrides currently)
         cls.precision = PRECISION_OVERRIDES.get(name, DEFAULT_FLOATING_PRECISION)
 
         # ── Snapshot existing methods, let parent do all the work ──────────
@@ -194,14 +164,29 @@ class SpyreTestBase(PrivateUse1TestBase):  # type: ignore[name-defined] # noqa: 
         def skip_test(self, test=test):
             raise unittest.SkipTest("Skipped for Spyre")
 
+        @wraps(test)
+        def skip_test_dtypes(self, test=test):
+            raise unittest.SkipTest("dtype unsupported on Spyre")
+
         for method_name in new_methods:
             should_skip = base_is_disabled
+            should_skip_dtype = False
 
             # Check if this specific variant matches a disabled pattern
             if not should_skip and disabled_mset is not None:
                 should_skip = match_name(method_name, disabled_mset)
 
-            if should_skip:
+            # Skip unsupported dtypes for Spyre
+            if not cls.test_unsup_dtypes:
+                for dtype in cls.unsupported_dtypes:
+                    dtype_str = str(dtype).split(".")[-1]
+                    if dtype_str in method_name:
+                        should_skip_dtype = True
+                        break
+
+            if should_skip_dtype:
+                setattr(cls, method_name, skip_test_dtypes)
+            elif should_skip:
                 setattr(cls, method_name, skip_test)
 
 
