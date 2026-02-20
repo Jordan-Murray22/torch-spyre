@@ -57,34 +57,34 @@ DISABLED_TESTS = {
         "test_view_copy_output_contiguous",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
         "test_view_copy_out",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
     },
-    "TestOldViewOps": { # Ensures backward compatibility by testing legacy view behaviors and edge cases from older PyTorch implementations
-        "test_ravel", # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
-        "test_empty_reshape", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_expand", # NotImplementedError aten::uniform_ 
-        "test_view_empty", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_reshape", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_flatten", #AssertionError: The length of the sequences mismatch: 1 != 0 
-        "test_big_transpose", # NotImplementedError aten::uniform_ 
-        "test_T", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_transposes", # Signal Received: 8 (Floating point exception)
-        "test_transposes_errors", # Signal Received: 8 (Floating point exception)
-        "test_python_types", # Signal Received: 8 (Floating point exception)
-        "test_memory_format_resize_as", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_memory_format_resize_", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_transpose_invalid", # NotImplementedError aten::random_.from
-        "test_transpose_vs_numpy", # Signal Received: 11 (Segmentation fault)
-        "test_atleast", # Signal Received: 11 (Segmentation fault)
-        "test_broadcast_to", # NotImplementedError aten::random_.from and aten::uniform_ 
-        "test_view", # NotImplementedError aten::uniform_ 
-        "test_reshape_view_semantics", # Signal Received: 8 (Floating point exception)
-        "test_contiguous", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_tensor_split_sections", # Signal Received: 8 (Floating point exception)
-        "test_tensor_split_indices", # Signal Received: 8 (Floating point exception)
-        "test_tensor_split_errors", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_resize_all_dtypes_and_devices", # NotImplementedError aten::resize_ 
-        "test_resize_as_all_dtypes_and_devices", # NotImplementedError aten::resize_ 
-        "test_as_strided_overflow_storage_offset", # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
-        "test_view_all_dtypes_and_devices", # Signal Received: 8 (Floating point exception) 
+    "TestOldViewOps": {  # Ensures backward compatibility by testing legacy view behaviors and edge cases from older PyTorch implementations
+        "test_ravel",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_empty_reshape",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_expand",  # NotImplementedError aten::uniform_
+        "test_view_empty",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_reshape",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_flatten",  # AssertionError: The length of the sequences mismatch: 1 != 0
+        "test_big_transpose",  # NotImplementedError aten::uniform_
+        "test_T",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_transposes",  # Signal Received: 8 (Floating point exception)
+        "test_transposes_errors",  # Signal Received: 8 (Floating point exception)
+        "test_python_types",  # Signal Received: 8 (Floating point exception)
+        "test_memory_format_resize_as",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_memory_format_resize_",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_transpose_invalid",  # NotImplementedError aten::random_.from
+        "test_transpose_vs_numpy",  # Signal Received: 11 (Segmentation fault)
+        "test_atleast",  # Signal Received: 11 (Segmentation fault)
+        "test_broadcast_to",  # NotImplementedError aten::random_.from and aten::uniform_
+        "test_view",  # NotImplementedError aten::uniform_
+        "test_reshape_view_semantics",  # Signal Received: 8 (Floating point exception)
+        "test_contiguous",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_tensor_split_sections",  # Signal Received: 8 (Floating point exception)
+        "test_tensor_split_indices",  # Signal Received: 8 (Floating point exception)
+        "test_tensor_split_errors",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_resize_all_dtypes_and_devices",  # NotImplementedError aten::resize_
+        "test_resize_as_all_dtypes_and_devices",  # NotImplementedError aten::resize_
+        "test_as_strided_overflow_storage_offset",  # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651
+        "test_view_all_dtypes_and_devices",  # Signal Received: 8 (Floating point exception)
     },
 }
 
