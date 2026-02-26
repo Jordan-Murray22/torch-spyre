@@ -23,8 +23,8 @@ DISABLED_TESTS = {
         "test_diagonal_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
         "test_select_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
         "test_unbind_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
-        "test_expand_view",  # RuntimeError: aten::expand() takes 2 positional argument(s) but 3 was/were given https://github.com/torch-spyre/torch-spyre/issues/606
-        "test_expand_as_view",  # RuntimeError: aten::expand() takes 2 positional argument(s) but 3 was/were given https://github.com/torch-spyre/torch-spyre/issues/606
+        "test_expand_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
+        "test_expand_as_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
         "test_narrow_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
         "test_permute_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
         "test_transpose_view",  # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687
