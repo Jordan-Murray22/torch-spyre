@@ -44,6 +44,88 @@ test_suite_config:
                 - name: float32
                   description: corrupted double-linked list
 
+    - path: ${PYTORCH}/test/test_view_ops.py
+      unlisted_test_mode: xfail
+      tests:
+        - names: 
+            - TestViewOps::test_conj_self
+          mode: mandatory_success
+          edits:
+            dtypes:
+              include:
+                - name: bfloat16
+                - name: int16
+                - name: int32
+                - name: float32
+                - name: float64
+                - name: int8
+                - name: uint8
+        - names:
+            - TestViewOps::test_imag_noncomplex  # RuntimeError: Spyre backend does not support type conversion yet during copy https://github.com/torch-spyre/torch-spyre/issues/677 TODO:UPDATE! (failing for int64)
+            - TestViewOps::test_view_dtype_upsize_errors # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 TODO:UPDATE! failing for int64
+            - TestViewOps::test_view_tensor_split   # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 TODO:UPDATE! failing for int64
+          mode: mandatory_success
+          edits:
+            dtypes:
+              exclude:
+                - name: int64 
+        - names:
+            - TestViewOps::test_as_strided_gradients
+            - TestViewOps::test_contiguous_self
+            - TestViewOps::test_unbind
+            - TestOldViewOps::test_expand  # NotImplementedError aten::uniform_ https://github.com/torch-spyre/torch-spyre/issues/123
+          mode: mandatory_success
+        - names:
+            - TestViewOps::test_advanced_indexing_nonview   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_advanced_indexing_assignment   # NotImplementedError aten::_index_put_impl_ https://github.com/torch-spyre/torch-spyre/issues/692 TODO:UPDATE!
+            - TestViewOps::test_conj_view_with_shared_memory   # RuntimeError: Spyre backend does not support dtype ComplexFloat https://github.com/torch-spyre/torch-spyre/issues/678 TODO:UPDATE!
+            - TestViewOps::test_flatten_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_unfold_view   # NotImplementedError aten::unfold https://github.com/torch-spyre/torch-spyre/issues/688 TODO:UPDATE!
+            - TestViewOps::test_view_dtype_new   # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 TODO:UPDATE!
+          mode: xfail
+        - names:
+            - TestViewOps::test_T_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_as_strided_inplace_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_as_strided_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_basic_indexing_ellipses_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_basic_indexing_newaxis_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_basic_indexing_slice_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_conj_imag_view  # Complex not supported https://github.com/torch-spyre/torch-spyre/issues/697
+            - TestViewOps::test_contiguous_nonview   # Segmentation fault https://github.com/torch-spyre/torch-spyre/issues/689 TODO:UPDATE!
+            - TestViewOps::test_diagonal_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_expand_as_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_expand_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_flatten_nonview   # corrupted double-linked list https://github.com/torch-spyre/torch-spyre/issues/691 TODO:UPDATE!
+            - TestViewOps::test_movedim_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_narrow_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_permute_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_real_imag_view  # Complex not supported https://github.com/torch-spyre/torch-spyre/issues/694 
+            - TestViewOps::test_reshape_as_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_reshape_nonview   # malloc(): unaligned tcache chunk detected https://github.com/torch-spyre/torch-spyre/issues/690 TODO:UPDATE!
+            - TestViewOps::test_reshape_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_select_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_set_real_imag  # Complex not supported https://github.com/torch-spyre/torch-spyre/issues/700
+            - TestViewOps::test_squeeze_inplace_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_squeeze_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_t_inplace_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_t_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_transpose_inplace_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_transpose_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_unbind_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_unsqueeze_inplace_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_unsqueeze_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_view_as_complex   # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651 & Complex Not supported TODO:UPDATE!
+            - TestViewOps::test_view_as_real  # Complex not supported https://github.com/torch-spyre/torch-spyre/issues/652
+            - TestViewOps::test_view_as_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_view_copy_out #TODO:CREATE ISSUE
+            - TestViewOps::test_view_copy_output_contiguous   # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651 TODO:UPDATE!
+            - TestViewOps::test_view_copy   # NotImplementedError aten::normal_ https://github.com/torch-spyre/torch-spyre/issues/651 TODO:UPDATE!
+            - TestViewOps::test_view_tensor_dsplit   # corrupted size vs. prev_size https://github.com/torch-spyre/torch-spyre/issues/676
+            - TestViewOps::test_view_tensor_hsplit   # Fatal Python error: Segmentation fault https://github.com/torch-spyre/torch-spyre/issues/674 TODO:UPDATE!
+            - TestViewOps::test_view_tensor_vsplit   # corrupted size vs. prev_size https://github.com/torch-spyre/torch-spyre/issues/675 TODO:UPDATE!
+            - TestViewOps::test_view_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+          mode: skip     
+
   global:
     supported_dtypes:
       - name: float16
