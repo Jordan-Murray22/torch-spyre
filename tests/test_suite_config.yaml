@@ -47,7 +47,7 @@ test_suite_config:
     - path: ${PYTORCH}/test/test_view_ops.py
       unlisted_test_mode: xfail
       tests:
-        - names: 
+        - names:
             - TestViewOps::test_conj_self
           mode: mandatory_success
           edits:
@@ -68,7 +68,7 @@ test_suite_config:
           edits:
             dtypes:
               exclude:
-                - name: int64 
+                - name: int64
         - names:
             - TestViewOps::test_as_strided_gradients
             - TestViewOps::test_contiguous_self
@@ -124,7 +124,7 @@ test_suite_config:
             - TestViewOps::test_view_tensor_hsplit   # Fatal Python error: Segmentation fault https://github.com/torch-spyre/torch-spyre/issues/674 TODO:UPDATE!
             - TestViewOps::test_view_tensor_vsplit   # corrupted size vs. prev_size https://github.com/torch-spyre/torch-spyre/issues/675 TODO:UPDATE!
             - TestViewOps::test_view_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-          mode: skip     
+          mode: skip
 
   global:
     supported_dtypes:
