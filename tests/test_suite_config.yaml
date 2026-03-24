@@ -61,9 +61,9 @@ test_suite_config:
                 - name: int8
                 - name: uint8
         - names:
-            - TestViewOps::test_imag_noncomplex  # RuntimeError: Spyre backend does not support type conversion yet during copy https://github.com/torch-spyre/torch-spyre/issues/677 TODO:UPDATE! (failing for int64)
-            - TestViewOps::test_view_dtype_upsize_errors # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 TODO:UPDATE! failing for int64
-            - TestViewOps::test_view_tensor_split   # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 TODO:UPDATE! failing for int64
+            - TestViewOps::test_imag_noncomplex  # torch._inductor.exc.InductorError: Unsupported: Spyre backend does not support: operations on torch.int64 dtype TODO: LINK ISSUE
+            - TestViewOps::test_view_dtype_upsize_errors # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 
+            - TestViewOps::test_view_tensor_split   # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 
           mode: mandatory_success
           edits:
             dtypes:
@@ -76,20 +76,20 @@ test_suite_config:
             - TestOldViewOps::test_expand  # NotImplementedError aten::uniform_ https://github.com/torch-spyre/torch-spyre/issues/123
           mode: mandatory_success
         - names:
-            - TestViewOps::test_advanced_indexing_nonview   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_advanced_indexing_assignment   # NotImplementedError aten::_index_put_impl_ https://github.com/torch-spyre/torch-spyre/issues/692 TODO:UPDATE!
-            - TestViewOps::test_conj_view_with_shared_memory   # RuntimeError: Spyre backend does not support dtype ComplexFloat https://github.com/torch-spyre/torch-spyre/issues/678 TODO:UPDATE!
-            - TestViewOps::test_flatten_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_unfold_view   # NotImplementedError aten::unfold https://github.com/torch-spyre/torch-spyre/issues/688 TODO:UPDATE!
-            - TestViewOps::test_view_dtype_new   # NotImplementedError aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549 TODO:UPDATE!
+            - TestViewOps::test_advanced_indexing_nonview   # NotImplementedError: Could not run 'aten::index.Tensor_out' TODO:LINK ISSUE
+            - TestViewOps::test_advanced_indexing_assignment   # NotImplementedError aten::_index_put_impl_ https://github.com/torch-spyre/torch-spyre/issues/692
+            - TestViewOps::test_conj_view_with_shared_memory   # RuntimeError: Spyre backend does not support dtype ComplexFloat https://github.com/torch-spyre/torch-spyre/issues/678
+            - TestViewOps::test_flatten_view   # torch._inductor.exc.InductorError: CalledProcessError TODO: LINK ISSUE
+            - TestViewOps::test_unfold_view   # NotImplementedError aten::unfold https://github.com/torch-spyre/torch-spyre/issues/688
+            - TestViewOps::test_view_dtype_new   # RuntimeError: Comparing (float16) TODO:LINK ISSUE, NotImplementedError (int64) aten::random_.from https://github.com/torch-spyre/torch-spyre/issues/549
           mode: xfail
         - names:
-            - TestViewOps::test_T_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_as_strided_inplace_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_as_strided_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_basic_indexing_ellipses_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_basic_indexing_newaxis_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
-            - TestViewOps::test_basic_indexing_slice_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
+            - TestViewOps::test_T_view   # malloc_consolidate(): invalid chunk size TODO:LINK ISSUE
+            - TestViewOps::test_as_strided_inplace_view   # corrupted size vs. prev_size in fastbins TODO:LINK ISSUE
+            - TestViewOps::test_as_strided_view   # free(): invalid next size (fast) TODO:LINK ISSUE
+            - TestViewOps::test_basic_indexing_ellipses_view   # double free or corruption (!prev) TODO:LINK ISSUE
+            - TestViewOps::test_basic_indexing_newaxis_view   # malloc(): unaligned tcache chunk detected TODO:LINK ISSUE
+            - TestViewOps::test_basic_indexing_slice_view   # malloc_consolidate(): invalid chunk size TODO:LINK ISSUE
             - TestViewOps::test_conj_imag_view  # Complex not supported https://github.com/torch-spyre/torch-spyre/issues/697
             - TestViewOps::test_contiguous_nonview   # Segmentation fault https://github.com/torch-spyre/torch-spyre/issues/689 TODO:UPDATE!
             - TestViewOps::test_diagonal_view   # NotImplementedError as_strided https://github.com/torch-spyre/torch-spyre/issues/687 TODO:UPDATE!
