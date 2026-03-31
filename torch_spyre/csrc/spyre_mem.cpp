@@ -23,6 +23,7 @@
 #include <c10/core/MemoryFormat.h>
 #include <c10/core/TensorOptions.h>
 #include <c10/util/ArrayRef.h>
+#include <pybind11/pybind11.h>
 #include <torch/library.h>
 #include <util/sen_data_convert.h>
 
@@ -45,6 +46,8 @@
 #include "spyre_storage_impl.h"
 #include "spyre_tensor_impl.h"
 #include "types_mapping.h"
+
+namespace py = pybind11;
 
 namespace spyre {
 
@@ -594,46 +597,19 @@ at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
                            bool non_blocking) {
   DEBUGINFO("self (", self.scalar_type(), ") is on:", self.device());
   DEBUGINFO("dst (", dst.scalar_type(), ") on:", dst.device());
-  at::Storage source_storage;
-  at::Storage dest_storage;
 
   // TODO(tmhoangt): add type conversion node
   TORCH_CHECK(
       self.scalar_type() == dst.scalar_type(),
       "Spyre backend does not support type conversion yet during copy.");
 
-  if (self.is_cpu() && dst.is_privateuseone()) {
-    if (self.dim() == 0) {
-      at::Tensor tmp_tensor = self.reshape({1});
-      copy_host_to_device(tmp_tensor, dst);
-    } else {
-      copy_host_to_device(self, dst);
-    }
-    return dst;
-
-  } else if (self.is_privateuseone() && dst.is_cpu()) {
-    copy_device_to_host(self, dst);
-    return dst;
-
-  } else if (self.is_privateuseone() && dst.is_privateuseone()) {
-    // Copy from Spyre to Spyre
-    TORCH_CHECK(false, "Error: In-device copy not implemented.");
-    // FIXME: This will need to be addressed for proper spyre to spyre copy
-    // source_storage =
-    //     (static_cast<SpyreTensorImpl*>(self.unsafeGetTensorImpl()))->storage();
-    // dest_storage =
-    //     (static_cast<SpyreTensorImpl*>(dst.unsafeGetTensorImpl()))->storage();
-    // DEBUGINFO("Copying", source_storage.nbytes(), "bytes from",
-    //           source_storage.device(), "to", dest_storage.device());
-    // std::memcpy(dest_storage.data_ptr().get(),
-    // source_storage.data_ptr().get(),
-    //             source_storage.nbytes());
-    // DEBUGINFO("Finished Copying ");
-    return dst;
-  } else {
-    // For all other cases fallback to the upstream implementation
-    return at::_copy_from(self, dst, non_blocking);
-  }
+  // Delegate to Python implementation which handles all copy cases:
+  // - Host → Device: Uses DMA operations (DMAI) via copy_host_to_device
+  // - Device → Host: Uses DMA operations (DMAO) via copy_device_to_host
+  // - Device → Device: Uses identity operation via inductor for on-device compute
+  py::object copy_module = py::module_::import("torch_spyre.device.copy");
+  py::object copy_func = copy_module.attr("spyre_copy_from_py");
+  return copy_func(self, dst, non_blocking).cast<at::Tensor>();
 }
 
 at::Tensor to_with_layout(const at::Tensor& self,

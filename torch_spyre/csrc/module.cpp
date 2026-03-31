@@ -282,8 +282,8 @@ PYBIND11_MODULE(_C, m) {
                     std::vector<int64_t>, DataFormats>(),
            py::arg("device_size"), py::arg("dim_map"), py::arg("stride_map"),
            py::arg("device_dtype"))
-      .def(py::pickle(
-          [](const spyre::SpyreTensorLayout &p) {  // __getstate__
+      .def("__getstate__",
+          [](const spyre::SpyreTensorLayout &p) {
             // Return a tuple that fully encodes the state of the object
             // If the pickle format changes, then update
             // kSpyreTensorLayoutPickleVersion but keep the tuple as the
@@ -292,8 +292,9 @@ PYBIND11_MODULE(_C, m) {
             return py::make_tuple(spyre::kSpyreTensorLayoutPickleVersion,
                                   p.device_size, p.dim_map, p.stride_map,
                                   p.device_dtype);
-          },
-          [](py::tuple t) {  // __setstate__
+          })
+      .def("__setstate__",
+          [](spyre::SpyreTensorLayout &p, py::tuple t) {
             if (t.size() != 5) {
               throw py::value_error(
                   "Invalid SpyreTensorLayout pickle: wrong tuple size");
@@ -306,11 +307,13 @@ PYBIND11_MODULE(_C, m) {
                   std::to_string(version));
             }
 
-            return spyre::SpyreTensorLayout(t[1].cast<std::vector<int64_t>>(),
-                                            t[2].cast<std::vector<int32_t>>(),
-                                            t[3].cast<std::vector<int64_t>>(),
-                                            t[4].cast<DataFormats>());
-          }));
+            // Reconstruct the object in-place
+            new (&p) spyre::SpyreTensorLayout(
+                t[1].cast<std::vector<int64_t>>(),
+                t[2].cast<std::vector<int32_t>>(),
+                t[3].cast<std::vector<int64_t>>(),
+                t[4].cast<DataFormats>());
+          });
 
   m.def("spyre_empty_with_layout", &spyre::spyre_empty_with_layout);
   m.def("to_with_layout", &spyre::to_with_layout);
@@ -351,6 +354,14 @@ PYBIND11_MODULE(_C, m) {
         "Enable/disable downcast warnings for this process.");
   m.def("get_elem_in_stick", &spyre::get_elem_in_stick);
   m.def("get_device_dtype", &spyre::get_device_dtype);
+
+  // Memory copy functions
+  m.def("copy_host_to_device", &spyre::copy_host_to_device,
+        "Copy tensor from host to device using DMA", py::arg("self"),
+        py::arg("dst"));
+  m.def("copy_device_to_host", &spyre::copy_device_to_host,
+        "Copy tensor from device to host using DMA", py::arg("self"),
+        py::arg("dst"));
 
   // Stream management functions
   m.def("get_stream_from_pool", &spyre::getStreamFromPool, py::arg("device"),

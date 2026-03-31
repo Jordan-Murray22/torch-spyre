@@ -30,6 +30,9 @@ at::Tensor spyre_empty_strided(c10::IntArrayRef size, c10::IntArrayRef stride,
 at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
                            bool non_blocking);
 
+void copy_host_to_device(const at::Tensor& self, const at::Tensor& dst);
+void copy_device_to_host(const at::Tensor& self, const at::Tensor& dst);
+
 class SpyreTensorLayout;
 at::Tensor spyre_empty_with_layout(c10::IntArrayRef size,
                                    c10::IntArrayRef stride,
