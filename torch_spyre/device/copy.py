@@ -28,7 +28,6 @@ Architecture:
 
 import torch
 import torch_spyre._C as _C
-from torch_spyre._inductor.constants import IDENTITY_OP
 
 
 def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
@@ -50,6 +49,9 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
         Both tensors must be on Spyre device (is_privateuseone() == True).
         The tensors must have the same shape and dtype.
     """
+    # Lazy import to avoid build-time import cycle
+    from torch_spyre._inductor.constants import IDENTITY_OP
+    
     # Validate inputs
     if not src.is_privateuseone():
         raise RuntimeError(f"Source tensor must be on Spyre device, got {src.device}")
@@ -66,18 +68,11 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
             f"Dtype mismatch: source {src.dtype} vs destination {dst.dtype}"
         )
     
-    # Use torch.compile with the identity operation to create SDSC
-    # The identity operation will be lowered to proper device compute
-    @torch.compile(backend="spyre")
-    def identity_copy(x):
-        """Identity function that will be compiled to device copy operation."""
-        return x.clone()
+    # Perform a simple clone operation which will use the device's native copy
+    # The clone will be handled by the underlying device implementation
+    result = src.clone()
     
-    # Execute the compiled identity operation
-    # This creates the SDSC and executes on device
-    result = identity_copy(src)
-    
-    # Copy result to destination
+    # Copy result to destination using the device's copy mechanism
     dst.copy_(result)
 
 
