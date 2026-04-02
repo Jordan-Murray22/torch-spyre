@@ -22,7 +22,7 @@ import torch
 
 class TestDeviceToDeviceCopy:
     """Test suite for device-to-device copy operations."""
-    '''
+    
     def test_device_to_device(self):
         """Test device-to-device copy using tensor.copy_() method."""
         # Create source tensor
@@ -36,7 +36,7 @@ class TestDeviceToDeviceCopy:
         
         # Verify the copy worked
         assert torch.allclose(src,dst)
-    '''
+
     def test_host_to_device(self):
         """Test that host-to-device copy still works after changes."""
         src = torch.randn(10, 20)

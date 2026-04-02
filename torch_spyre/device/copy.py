@@ -29,7 +29,6 @@ Architecture:
 import torch
 import torch_spyre._C as _C
 
-
 def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
     """
     Copy tensor from one Spyre device to another using identity operation.
@@ -68,12 +67,11 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
             f"Dtype mismatch: source {src.dtype} vs destination {dst.dtype}"
         )
     
-    # Perform a simple clone operation which will use the device's native copy
-    # The clone will be handled by the underlying device implementation
-    result = src.clone()
+    @torch.compile(backend="spyre")
+    def _copy_kernel(x):
+        return x.clone()
     
-    # Copy result to destination using the device's copy mechanism
-    dst.copy_(result)
+    dst = _copy_kernel(src)
 
 
 def spyre_copy_from_py(
