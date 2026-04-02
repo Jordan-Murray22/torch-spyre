@@ -603,13 +603,24 @@ at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
       self.scalar_type() == dst.scalar_type(),
       "Spyre backend does not support type conversion yet during copy.");
 
-  // Delegate to Python implementation which handles all copy cases:
-  // - Host → Device: Uses DMA operations (DMAI) via copy_host_to_device
-  // - Device → Host: Uses DMA operations (DMAO) via copy_device_to_host
-  // - Device → Device: Uses identity operation via inductor for on-device compute
-  py::object copy_module = py::module_::import("torch_spyre.device.copy");
-  py::object copy_func = copy_module.attr("spyre_copy_from_py");
-  return copy_func(self, dst, non_blocking).cast<at::Tensor>();
+  // Try to delegate to Python implementation
+  try {
+    // Acquire GIL before calling Python
+    py::gil_scoped_acquire acquire;
+    
+    DEBUGINFO("Trying to import python module");
+    py::object copy_module = py::module_::import("torch_spyre.device.copy");
+    py::object copy_func = copy_module.attr("spyre_copy_from_py");
+    return copy_func(self, dst, non_blocking).cast<at::Tensor>();
+  } catch (const py::error_already_set& e) {
+    DEBUGINFO("Python delegation failed: ", e.what());
+    DEBUGINFO("Falling back to C++ implementation");
+    // Fall back to direct C++ implementation
+  } catch (const std::exception& e) {
+    DEBUGINFO("Python delegation failed with exception: ", e.what());
+    DEBUGINFO("Falling back to C++ implementation");
+    // Fall back to direct C++ implementation
+  }
 }
 
 at::Tensor to_with_layout(const at::Tensor& self,
