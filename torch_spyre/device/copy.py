@@ -51,10 +51,10 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
     # Lazy import to avoid build-time import cycle
     from torch_spyre._inductor.constants import IDENTITY_OP
     
-    # Validate inputs
-    if not src.is_privateuseone():
+    # Validate inputs - check if tensors are on Spyre device
+    if src.device.type != 'spyre':
         raise RuntimeError(f"Source tensor must be on Spyre device, got {src.device}")
-    if not dst.is_privateuseone():
+    if dst.device.type != 'spyre':
         raise RuntimeError(f"Destination tensor must be on Spyre device, got {dst.device}")
     
     if src.shape != dst.shape:
@@ -67,11 +67,14 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
             f"Dtype mismatch: source {src.dtype} vs destination {dst.dtype}"
         )
     
-    @torch.compile(backend="spyre")
+    # Use torch.compile with default inductor backend
+    # The Spyre backend will be automatically selected because tensors are on Spyre device
+    @torch.compile
     def _copy_kernel(x):
-        return x.clone()
-    
+        return x.detach().clone()
     dst = _copy_kernel(src)
+    print(f"dst after clone - {dst}")
+    return dst
 
 
 def spyre_copy_from_py(
@@ -98,7 +101,13 @@ def spyre_copy_from_py(
         For unsupported device combinations, falls back to upstream implementation.
     """
     # Handle scalar tensors (dim == 0) for host-to-device case
-    if self.is_cpu() and dst.is_privateuseone():
+    # Check device types - use device.type instead of is_privateuseone()
+    src_is_cpu = self.device.type == 'cpu'
+    dst_is_spyre = dst.device.type == 'spyre'
+    src_is_spyre = self.device.type == 'spyre'
+    dst_is_cpu = dst.device.type == 'cpu'
+    
+    if src_is_cpu and dst_is_spyre:
         if self.dim() == 0:
             # Reshape scalar to 1-element tensor for DMA
             tmp_tensor = self.reshape([1])
@@ -107,15 +116,20 @@ def spyre_copy_from_py(
             _C.copy_host_to_device(self, dst)
         return dst
     
-    elif self.is_privateuseone() and dst.is_cpu():
+    elif src_is_spyre and dst_is_cpu:
         _C.copy_device_to_host(self, dst)
         return dst
     
-    elif self.is_privateuseone() and dst.is_privateuseone():
+    elif src_is_spyre and dst_is_spyre:
         # Device-to-device copy using identity operation
-        copy_device_to_device(self, dst)
+        dst = copy_device_to_device(self, dst)
+        print(f"dst after clone returns {dst}")
         return dst
     
     else:
         # For all other cases, fallback to the upstream implementation
-        return torch.ops.aten._copy_from(self, dst, non_blocking)
+        #return torch.ops.aten._copy_from(self, dst, non_blocking)
+        # Unsupported copy operation
+        raise RuntimeError(
+            f"Unsupported copy operation from {self.device} to {dst.device}"
+        )

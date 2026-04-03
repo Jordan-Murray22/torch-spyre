@@ -35,7 +35,8 @@ class TestDeviceToDeviceCopy:
         print(f"dst after: {dst}")
         
         # Verify the copy worked
-        assert torch.allclose(src,dst)
+        assert torch.allclose(src.cpu(), dst.cpu())
+        assert src.data_ptr() != dst.data_ptr()
 
     def test_host_to_device(self):
         """Test that host-to-device copy still works after changes."""

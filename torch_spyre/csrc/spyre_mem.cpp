@@ -611,15 +611,14 @@ at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
     DEBUGINFO("Trying to import python module");
     py::object copy_module = py::module_::import("torch_spyre.device.copy");
     py::object copy_func = copy_module.attr("spyre_copy_from_py");
-    return copy_func(self, dst, non_blocking).cast<at::Tensor>();
+    copy_func(self, dst, non_blocking).cast<at::Tensor>();
+    return dst;
   } catch (const py::error_already_set& e) {
     DEBUGINFO("Python delegation failed: ", e.what());
-    DEBUGINFO("Falling back to C++ implementation");
-    // Fall back to direct C++ implementation
+    // Re-throw the Python exception - don't fall back to C++
+    throw std::runtime_error(std::string("Python copy delegation failed: ") + e.what());
   } catch (const std::exception& e) {
     DEBUGINFO("Python delegation failed with exception: ", e.what());
-    DEBUGINFO("Falling back to C++ implementation");
-    // Fall back to direct C++ implementation
   }
 }
 
