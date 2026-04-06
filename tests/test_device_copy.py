@@ -22,7 +22,7 @@ import torch
 
 class TestDeviceToDeviceCopy:
     """Test suite for device-to-device copy operations."""
-    
+
     def test_device_to_device(self):
         """Test device-to-device copy using tensor.copy_() method."""
         # Create source tensor
@@ -33,7 +33,7 @@ class TestDeviceToDeviceCopy:
         print(f"dst before: {dst}")
         dst.copy_(src)
         print(f"dst after: {dst}")
-        
+
         # Verify the copy worked
         assert torch.allclose(src.cpu(), dst.cpu())
         assert src.data_ptr() != dst.data_ptr()
@@ -41,20 +41,21 @@ class TestDeviceToDeviceCopy:
     def test_host_to_device(self):
         """Test that host-to-device copy still works after changes."""
         src = torch.randn(10, 20)
-        dst = torch.empty(10, 20, device='spyre')
-        
+        dst = torch.empty(10, 20, device="spyre")
+
         dst.copy_(src)
-        
+
         assert torch.allclose(src, dst.cpu())
 
     def test_device_to_host(self):
         """Test that device-to-host copy still works after changes."""
-        src = torch.randn(10, 20, device='spyre')
+        src = torch.randn(10, 20, device="spyre")
         dst = torch.empty(10, 20)
-        
+
         dst.copy_(src)
-        
+
         assert torch.allclose(src.cpu(), dst)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

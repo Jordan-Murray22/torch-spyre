@@ -29,49 +29,52 @@ Architecture:
 import torch
 import torch_spyre._C as _C
 
-def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
+
+def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
     """
     Copy tensor from one Spyre device to another using identity operation.
-    
+
     This function uses the inductor's identity operation to perform an efficient
     device-to-device copy. The identity operation creates the proper SDSC that
     executes the copy on the device compute units.
-    
+
     Args:
         src: Source tensor on Spyre device
         dst: Destination tensor on Spyre device
-        
+
     Raises:
         RuntimeError: If tensors are not on Spyre device or have incompatible shapes/dtypes
-        
+
     Note:
         Both tensors must be on Spyre device (is_privateuseone() == True).
         The tensors must have the same shape and dtype.
     """
     # Lazy import to avoid build-time import cycle
-    from torch_spyre._inductor.constants import IDENTITY_OP
-    
+
     # Validate inputs - check if tensors are on Spyre device
-    if src.device.type != 'spyre':
+    if src.device.type != "spyre":
         raise RuntimeError(f"Source tensor must be on Spyre device, got {src.device}")
-    if dst.device.type != 'spyre':
-        raise RuntimeError(f"Destination tensor must be on Spyre device, got {dst.device}")
-    
+    if dst.device.type != "spyre":
+        raise RuntimeError(
+            f"Destination tensor must be on Spyre device, got {dst.device}"
+        )
+
     if src.shape != dst.shape:
         raise RuntimeError(
             f"Shape mismatch: source {src.shape} vs destination {dst.shape}"
         )
-    
+
     if src.dtype != dst.dtype:
         raise RuntimeError(
             f"Dtype mismatch: source {src.dtype} vs destination {dst.dtype}"
         )
-    
+
     # Use torch.compile with default inductor backend
     # The Spyre backend will be automatically selected because tensors are on Spyre device
     @torch.compile
     def _copy_kernel(x):
         return x.detach().clone()
+
     dst.data = _copy_kernel(src).data
     print(f"dst after clone - {dst}")
     return dst
@@ -82,19 +85,19 @@ def spyre_copy_from_py(
 ) -> torch.Tensor:
     """
     Main copy orchestration function for Spyre tensors.
-    
+
     This function is called from C++ spyre_copy_from and routes the copy
     operation to the appropriate implementation based on source and destination
     device locations.
-    
+
     Args:
         self: Source tensor
         dst: Destination tensor
         non_blocking: Whether to perform asynchronous copy (currently unused)
-        
+
     Returns:
         The destination tensor
-        
+
     Note:
         Type conversion is not supported. Source and destination must have
         the same dtype (checked in C++ before calling this function).
@@ -102,11 +105,11 @@ def spyre_copy_from_py(
     """
     # Handle scalar tensors (dim == 0) for host-to-device case
     # Check device types - use device.type instead of is_privateuseone()
-    src_is_cpu = self.device.type == 'cpu'
-    dst_is_spyre = dst.device.type == 'spyre'
-    src_is_spyre = self.device.type == 'spyre'
-    dst_is_cpu = dst.device.type == 'cpu'
-    
+    src_is_cpu = self.device.type == "cpu"
+    dst_is_spyre = dst.device.type == "spyre"
+    src_is_spyre = self.device.type == "spyre"
+    dst_is_cpu = dst.device.type == "cpu"
+
     if src_is_cpu and dst_is_spyre:
         if self.dim() == 0:
             # Reshape scalar to 1-element tensor for DMA
@@ -115,20 +118,20 @@ def spyre_copy_from_py(
         else:
             _C.copy_host_to_device(self, dst)
         return dst
-    
+
     elif src_is_spyre and dst_is_cpu:
         _C.copy_device_to_host(self, dst)
         return dst
-    
+
     elif src_is_spyre and dst_is_spyre:
         # Device-to-device copy using identity operation
         dst = copy_device_to_device(self, dst)
         print(f"dst after clone returns {dst}")
         return dst
-    
+
     else:
         # For all other cases, fallback to the upstream implementation
-        #return torch.ops.aten._copy_from(self, dst, non_blocking)
+        # return torch.ops.aten._copy_from(self, dst, non_blocking)
         # Unsupported copy operation
         raise RuntimeError(
             f"Unsupported copy operation from {self.device} to {dst.device}"

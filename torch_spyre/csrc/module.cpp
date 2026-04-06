@@ -283,37 +283,35 @@ PYBIND11_MODULE(_C, m) {
            py::arg("device_size"), py::arg("dim_map"), py::arg("stride_map"),
            py::arg("device_dtype"))
       .def("__getstate__",
-          [](const spyre::SpyreTensorLayout &p) {
-            // Return a tuple that fully encodes the state of the object
-            // If the pickle format changes, then update
-            // kSpyreTensorLayoutPickleVersion but keep the tuple as the
-            // returned object and the first element to be the
-            // kSpyreTensorLayoutPickleVersion
-            return py::make_tuple(spyre::kSpyreTensorLayoutPickleVersion,
-                                  p.device_size, p.dim_map, p.stride_map,
-                                  p.device_dtype);
-          })
-      .def("__setstate__",
-          [](spyre::SpyreTensorLayout &p, py::tuple t) {
-            if (t.size() != 5) {
-              throw py::value_error(
-                  "Invalid SpyreTensorLayout pickle: wrong tuple size");
-            }
+           [](const spyre::SpyreTensorLayout &p) {
+             // Return a tuple that fully encodes the state of the object
+             // If the pickle format changes, then update
+             // kSpyreTensorLayoutPickleVersion but keep the tuple as the
+             // returned object and the first element to be the
+             // kSpyreTensorLayoutPickleVersion
+             return py::make_tuple(spyre::kSpyreTensorLayoutPickleVersion,
+                                   p.device_size, p.dim_map, p.stride_map,
+                                   p.device_dtype);
+           })
+      .def("__setstate__", [](spyre::SpyreTensorLayout &p, py::tuple t) {
+        if (t.size() != 5) {
+          throw py::value_error(
+              "Invalid SpyreTensorLayout pickle: wrong tuple size");
+        }
 
-            int32_t version = t[0].cast<int32_t>();
-            if (version != spyre::kSpyreTensorLayoutPickleVersion) {
-              throw py::value_error(
-                  "Unsupported SpyreTensorLayout pickle version: " +
-                  std::to_string(version));
-            }
+        int32_t version = t[0].cast<int32_t>();
+        if (version != spyre::kSpyreTensorLayoutPickleVersion) {
+          throw py::value_error(
+              "Unsupported SpyreTensorLayout pickle version: " +
+              std::to_string(version));
+        }
 
-            // Reconstruct the object in-place
-            new (&p) spyre::SpyreTensorLayout(
-                t[1].cast<std::vector<int64_t>>(),
-                t[2].cast<std::vector<int32_t>>(),
-                t[3].cast<std::vector<int64_t>>(),
-                t[4].cast<DataFormats>());
-          });
+        // Reconstruct the object in-place
+        new (&p) spyre::SpyreTensorLayout(t[1].cast<std::vector<int64_t>>(),
+                                          t[2].cast<std::vector<int32_t>>(),
+                                          t[3].cast<std::vector<int64_t>>(),
+                                          t[4].cast<DataFormats>());
+      });
 
   m.def("spyre_empty_with_layout", &spyre::spyre_empty_with_layout);
   m.def("to_with_layout", &spyre::to_with_layout);
