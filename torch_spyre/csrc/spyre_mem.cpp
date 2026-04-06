@@ -611,8 +611,7 @@ at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
     DEBUGINFO("Trying to import python module");
     py::object copy_module = py::module_::import("torch_spyre.device.copy");
     py::object copy_func = copy_module.attr("spyre_copy_from_py");
-    copy_func(self, dst, non_blocking).cast<at::Tensor>();
-    return dst;
+    return copy_func(self, dst, non_blocking).cast<at::Tensor>();
   } catch (const py::error_already_set& e) {
     DEBUGINFO("Python delegation failed: ", e.what());
     // Re-throw the Python exception - don't fall back to C++

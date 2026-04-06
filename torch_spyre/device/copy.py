@@ -72,7 +72,7 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> None:
     @torch.compile
     def _copy_kernel(x):
         return x.detach().clone()
-    dst = _copy_kernel(src)
+    dst.data = _copy_kernel(src).data
     print(f"dst after clone - {dst}")
     return dst
 
