@@ -20,8 +20,8 @@ def copy_device_to_device(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
     """
     Copy tensor from one Spyre device to another using identity op.
 
-    This function uses the inductor's identity opto perform device-to-device copy. 
-    The identity operation creates the proper SDSC that executes the copy on the 
+    This function uses the inductor's identity op to perform device-to-device copy.
+    The identity operation creates the proper SDSC that executes the copy on the
     device compute units.
 
     Args:
