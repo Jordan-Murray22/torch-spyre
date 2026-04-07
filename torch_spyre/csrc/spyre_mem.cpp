@@ -603,7 +603,7 @@ at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
       self.scalar_type() == dst.scalar_type(),
       "Spyre backend does not support type conversion yet during copy.");
 
-  // Try to delegate to Python implementation
+  // Delegate to Python implementation
   try {
     // Acquire GIL before calling Python
     py::gil_scoped_acquire acquire;
@@ -618,9 +618,6 @@ at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
     // Re-throw the Python exception - don't fall back to C++
     throw std::runtime_error(std::string("Python copy delegation failed: ") +
                              e.what());
-  }
-  catch (const std::exception& e) {
-    DEBUGINFO("Python delegation failed with exception: ", e.what());
   }
 }
 

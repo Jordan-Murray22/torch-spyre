@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests for device-to-device copy functionality using identity operation.
-"""
-
 import pytest
 import torch
 
@@ -25,8 +21,6 @@ class TestDeviceToDeviceCopy:
 
     def test_device_to_device(self):
         """Test device-to-device copy using tensor.copy_() method."""
-        # Create source tensor
-
         src = torch.randn(3, dtype=torch.float16, device="spyre")
         dst = torch.empty(3, dtype=torch.float16, device="spyre")
         print(f"src: {src}")
@@ -39,7 +33,7 @@ class TestDeviceToDeviceCopy:
         assert src.data_ptr() != dst.data_ptr()
 
     def test_host_to_device(self):
-        """Test that host-to-device copy still works after changes."""
+        """Test that host-to-device copy still works after pybind implementation"""
         src = torch.randn(10, 20)
         dst = torch.empty(10, 20, device="spyre")
 
@@ -48,7 +42,7 @@ class TestDeviceToDeviceCopy:
         assert torch.allclose(src, dst.cpu())
 
     def test_device_to_host(self):
-        """Test that device-to-host copy still works after changes."""
+        """Test that device-to-host copy still works after pybind implementation"""
         src = torch.randn(10, 20, device="spyre")
         dst = torch.empty(10, 20)
 
