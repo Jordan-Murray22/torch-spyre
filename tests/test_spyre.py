@@ -355,6 +355,35 @@ class TestSpyre(TestCase):
         finally:
             torch.spyre.set_device(orig)
 
+    def test_host_to_device(self):
+        """Test that host-to-device copy still works after pybind implementation"""
+        src = torch.randn(10, 20)
+        dst = torch.empty(10, 20, device="spyre")
+
+        dst.copy_(src)
+
+        assert torch.allclose(src, dst.cpu())
+
+    def test_device_to_host(self):
+        """Test that device-to-host copy still works after pybind implementation"""
+        src = torch.randn(10, 20, device="spyre")
+        dst = torch.empty(10, 20)
+
+        dst.copy_(src)
+
+        assert torch.allclose(src.cpu(), dst)
+
+    def test_device_to_device(self):
+        """Test device-to-device copy using tensor.copy_() method."""
+        src = torch.randn(3, dtype=torch.float16, device="spyre")
+        dst = torch.empty(3, dtype=torch.float16, device="spyre")
+        
+        dst.copy_(src)
+
+        # Verify the copy worked
+        assert torch.allclose(src.cpu(), dst.cpu())
+        assert src.data_ptr() != dst.data_ptr()
+
 
 if __name__ == "__main__":
     run_tests()
