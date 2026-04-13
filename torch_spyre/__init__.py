@@ -227,6 +227,9 @@ def _autoload():
 
     _light_autoload()
 
+    # Import copy operations to register aten::_copy_from implementation
+    import torch_spyre.device.copy  # noqa: F401
+
     # Set correct state for dynamo to support eager ops
     import torch._dynamo.config
 

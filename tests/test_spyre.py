@@ -400,9 +400,15 @@ class TestSpyre(TestCase):
     def test_device_to_device_complex(self):
         """Test more complex device-to-device copy using tensor.copy_() method."""
         a = torch.randn(512, 512).to("spyre")
+        print(f"a: {a}")
         b = torch.zeros((512, 512), device="spyre")
+        print(f"b: {b}")
         c = b.view((64, 8, 512))
+        print(f"c: {c}")
         b.copy_(a)
+        print(f"b after copy: {b}")
+        print(f"c after copy: {c}")
+        assert torch.allclose(a.cpu(), b.cpu())
 
 
 if __name__ == "__main__":

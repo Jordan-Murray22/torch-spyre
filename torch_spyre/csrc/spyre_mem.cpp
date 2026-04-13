@@ -587,39 +587,6 @@ at::Tensor& spyre_set_storage(at::Tensor& result, at::Storage storage,
   return at::cpu::set_(result, storage, storage_offset, size, stride);
 }
 
-/**
- * This method handles copy between devices. When copying to Spyre, this method
- * marks the tensor to compute on Spyre, but continue to use CPU tensor for now
- * such that when we run an op on the tensor on the Spyre, it will have the
- * proper handle to the Spyre allocation
- */
-at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
-                           bool non_blocking) {
-  DEBUGINFO("self (", self.scalar_type(), ") is on:", self.device());
-  DEBUGINFO("dst (", dst.scalar_type(), ") on:", dst.device());
-
-  // TODO(tmhoangt): add type conversion node
-  TORCH_CHECK(
-      self.scalar_type() == dst.scalar_type(),
-      "Spyre backend does not support type conversion yet during copy.");
-
-  // Delegate to Python implementation
-  try {
-    // Acquire GIL before calling Python
-    py::gil_scoped_acquire acquire;
-
-    DEBUGINFO("Trying to import python module");
-    py::object copy_module = py::module_::import("torch_spyre.device.copy");
-    py::object copy_func = copy_module.attr("spyre_copy_from_py");
-    return copy_func(self, dst, non_blocking).cast<at::Tensor>();
-  }
-  catch (const py::error_already_set& e) {
-    DEBUGINFO("Python delegation failed: ", e.what());
-    // Re-throw the Python exception - don't fall back to C++
-    throw std::runtime_error(std::string("Python copy delegation failed: ") +
-                             e.what());
-  }
-}
 
 at::Tensor to_with_layout(const at::Tensor& self,
                           SpyreTensorLayout device_layout) {
@@ -632,7 +599,8 @@ at::Tensor to_with_layout(const at::Tensor& self,
   auto dst = spyre_empty_with_layout(self.sizes(), self.strides(),
                                      c10::typeMetaToScalarType(self.dtype()),
                                      device_layout);
-  return spyre_copy_from(self, dst, false);
+  copy_host_to_device(self, dst);
+  return dst;
 }
 
 at::Tensor empty_with_layout(
@@ -687,7 +655,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("empty.memory_format", TORCH_FN(spyre_empty));
   m.impl("empty_strided", TORCH_FN(spyre_empty_strided));
   m.impl("set_.source_Storage_storage_offset", TORCH_FN(spyre_set_storage));
-  m.impl("_copy_from", TORCH_FN(spyre_copy_from));
 }
 
 }  // namespace spyre

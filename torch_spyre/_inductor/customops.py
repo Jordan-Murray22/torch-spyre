@@ -207,6 +207,30 @@ def _ones_scalar_fake(
     return torch.empty(1, dtype=dtype, device="spyre")
 
 
+@torch.library.custom_op("spyre::copy", mutates_args=(), device_types="spyre")
+def copy(input: torch.Tensor) -> torch.Tensor:
+    """
+    Clone operation that preserves the input's SpyreTensorLayout.
+    
+    This is exactly like clone but preserves the input's exact layout
+    (including SpyreTensorLayout) instead of forcing contiguous.
+    
+    Args:
+        input: Input tensor on Spyre device
+    
+    Returns:
+        A new tensor with the same data and layout as input
+    """
+    # This is a no-op in eager mode
+    # The lowering handles the actual copy with layout preservation
+    pass
+
+@copy.register_fake
+def _(input: torch.Tensor) -> torch.Tensor:
+    """Fake/meta kernel for shape inference."""
+    return input.new_empty(input.size())
+
+
 # Copy input into output starting at offsets along dimensions dims and
 # return the updated output.
 @torch.library.custom_op("spyre::overwrite", mutates_args=(), device_types="spyre")
