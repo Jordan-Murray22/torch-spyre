@@ -587,7 +587,6 @@ at::Tensor& spyre_set_storage(at::Tensor& result, at::Storage storage,
   return at::cpu::set_(result, storage, storage_offset, size, stride);
 }
 
-
 at::Tensor to_with_layout(const at::Tensor& self,
                           SpyreTensorLayout device_layout) {
   DEBUGINFO(

@@ -15,17 +15,21 @@
 import torch
 import torch_spyre._C as _C
 
+
 @torch.library.impl("aten::_copy_from", "PrivateUse1")
 def spyre_copy_from(self, dst, non_blocking=False):
     # Implement PyTorch _copy_from semantics:
     # 1. Check if views of same data
-    if self.data_ptr() == dst.data_ptr() and self.storage_offset() == dst.storage_offset():
+    if (
+        self.data_ptr() == dst.data_ptr()
+        and self.storage_offset() == dst.storage_offset()
+    ):
         return self
-    
+
     # 2. Check if numel is 0
     if self.numel() == 0:
         return self
-    
+
     # 3. Do the real copy
     if self.device.type == "cpu" and dst.device.type == "spyre":
         return _C.copy_host_to_device(self, dst)
@@ -37,7 +41,7 @@ def spyre_copy_from(self, dst, non_blocking=False):
         def _copy_kernel(x):
             # Use spyre.copy which preserves input's SpyreTensorLayout
             return torch.ops.spyre.copy(x)
-        
+
         # Execute and assign to dst's storage
         dst.data = _copy_kernel(self).data
         return dst

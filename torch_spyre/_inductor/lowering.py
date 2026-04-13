@@ -507,12 +507,12 @@ def clone(x, *, memory_format=None):
 def lower_copy(x):
     """
     Lower spyre::copy - like clone but preserves input's SpyreTensorLayout.
-    
+
     This is the key difference from clone: we preserve the input's exact layout
     including its SpyreTensorLayout, rather than forcing contiguous output.
     """
     from torch._inductor.ir import get_stride_order
-    
+
     # Create identity operation (like clone)
     result = Pointwise.create(
         device=x.get_device(),
@@ -522,12 +522,12 @@ def lower_copy(x):
         origin_node=x.get_origin_node(),
         traceback=x.get_traceback(),
     )
-    
+
     # Preserve input's stride order
     input_stride_order = get_stride_order(x.get_stride())
     result.realize()
     result.freeze_layout_with_stride_order(input_stride_order)
-    
+
     return result
 
 
