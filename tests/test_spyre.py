@@ -386,7 +386,7 @@ class TestSpyre(TestCase):
         cls = ns["_TestMROCheckPRIVATEUSE1"]
         assert issubclass(cls, TestCase)
 
-    def test_device_to_device_simple(self):
+    def test_device_to_device(self):
         """Test simple device-to-device copy using tensor.copy_() method."""
         src = torch.randn(3, dtype=torch.float16, device="spyre")
         dst = torch.empty(3, dtype=torch.float16, device="spyre")
@@ -397,7 +397,7 @@ class TestSpyre(TestCase):
         assert torch.allclose(src.cpu(), dst.cpu())
         assert src.data_ptr() != dst.data_ptr()
 
-    def test_device_to_device_complex(self):
+    def test_device_to_device_with_view(self):
         """Test more complex device-to-device copy using tensor.copy_() method."""
         a = torch.randn(512, 512).to("spyre")
         print(f"a: {a}")
