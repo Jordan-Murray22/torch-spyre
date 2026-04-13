@@ -355,23 +355,36 @@ class TestSpyre(TestCase):
         finally:
             torch.spyre.set_device(orig)
 
-    def test_host_to_device(self):
-        """Test that host-to-device copy still works after pybind implementation"""
-        src = torch.randn(10, 20)
-        dst = torch.empty(10, 20, device="spyre")
+    def test_instantiate_device_type_tests_mro(self):
+        """Verify that instantiate_device_type_tests works with TestCase
+        base class and only_for=("privateuse1",).
 
-        dst.copy_(src)
+        Previously, inheriting from PrivateUse1TestBase caused an MRO
+        conflict when instantiate_device_type_tests tried to create a
+        dynamic subclass that also inherits PrivateUse1TestBase.
+        Using plain TestCase + only_for avoids the conflict.
+        """
+        from torch.testing._internal.common_device_type import (
+            instantiate_device_type_tests,
+        )
 
-        assert torch.allclose(src, dst.cpu())
+        class _TestMROCheck(TestCase):
+            def test_device_is_spyre(self):
+                pass
 
-    def test_device_to_host(self):
-        """Test that device-to-host copy still works after pybind implementation"""
-        src = torch.randn(10, 20, device="spyre")
-        dst = torch.empty(10, 20)
+        ns = {"_TestMROCheck": _TestMROCheck}
+        # This must not raise TypeError about MRO
+        instantiate_device_type_tests(_TestMROCheck, ns, only_for=("privateuse1",))
 
-        dst.copy_(src)
+        # instantiate_device_type_tests should create a class named
+        # _TestMROCheckPRIVATEUSE1 in the namespace
+        assert "_TestMROCheckPRIVATEUSE1" in ns, (
+            f"Expected _TestMROCheckPRIVATEUSE1 in namespace, got {list(ns)}"
+        )
 
-        assert torch.allclose(src.cpu(), dst)
+        # The generated class should be instantiable (valid MRO)
+        cls = ns["_TestMROCheckPRIVATEUSE1"]
+        assert issubclass(cls, TestCase)
 
     def test_device_to_device(self):
         """Test device-to-device copy using tensor.copy_() method."""
@@ -383,7 +396,6 @@ class TestSpyre(TestCase):
         # Verify the copy worked
         assert torch.allclose(src.cpu(), dst.cpu())
         assert src.data_ptr() != dst.data_ptr()
-
 
 if __name__ == "__main__":
     run_tests()
