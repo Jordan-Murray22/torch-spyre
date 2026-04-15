@@ -38,7 +38,7 @@ def spyre_copy_from(self, dst, non_blocking=False):
     elif self.device.type == "spyre" and dst.device.type == "cpu":
         return _C.copy_device_to_host(self, dst)
     elif self.device.type == "spyre" and self.device == dst.device:
-
+        '''
         @torch.compile(dynamic=False)
         def _copy_kernel(x):
             return torch.ops.spyre.copy(x)
@@ -46,5 +46,7 @@ def spyre_copy_from(self, dst, non_blocking=False):
         # Execute and assign to dst's storage
         dst.data = _copy_kernel(self).data
         return dst
+        '''
+        return torch.ops.spyre.copy_from_d2d(self, dst)
     else:
         return torch.ops.aten._copy_from.default(self, dst, non_blocking)
