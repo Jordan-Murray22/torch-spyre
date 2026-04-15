@@ -20,8 +20,13 @@ import torch_spyre._C as _C
 def spyre_copy_from(self, dst, non_blocking=False):
     # Check if views of same data
     if (
-        self.data_ptr() == dst.data_ptr()
-        and self.storage_offset() == dst.storage_offset()
+      self.data_ptr() == dst.data_ptr() and
+      self.storage_offset() == dst.storage_offset() and
+      self.strides().equals(dst.strides()) and
+      self.sizes().equals(dst.sizes()) and
+      self.scalar_type() == dst.scalar_type() and
+      self.is_conj() == dst.is_conj() and
+      self.is_neg() == dst.is_neg()
     ):
         return self
 
@@ -37,7 +42,7 @@ def spyre_copy_from(self, dst, non_blocking=False):
         @torch.compile(dynamic=False)
         def _copy_kernel(x):
             return torch.ops.spyre.copy(x)
-
+       
         # Execute and assign to dst's storage
         dst.data = _copy_kernel(self).data
         return dst
