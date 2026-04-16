@@ -68,7 +68,7 @@ def _patch_tensor_for_spyre():
             return orig_to(self, *args, **kwargs)
         else:
             dst = spyre_empty_with_layout(
-                self.size(), self.strides(), self.dtype(), device_layout
+                self.size(), self.stride(), self.dtype, device_layout
             )
             if self.device.type == "cpu":
                 copy_host_to_device(self, dst)
