@@ -28,10 +28,10 @@ def spyre_copy_from(self, dst, non_blocking=False):
       self.is_conj() == dst.is_conj() and
       self.is_neg() == dst.is_neg()
     ):
-        return self
+        return dst
 
     if self.numel() == 0:
-        return self
+        return dst
 
     if self.device.type == "cpu" and dst.device.type == "spyre":
         return _C.copy_host_to_device(self, dst)
