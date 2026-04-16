@@ -36,9 +36,6 @@ at::Tensor spyre_empty_with_layout(c10::IntArrayRef size,
                                    c10::ScalarType dtype,
                                    SpyreTensorLayout device_layout);
 
-at::Tensor to_with_layout(const at::Tensor& self,
-                          SpyreTensorLayout device_layout);
-
 at::Tensor empty_with_layout(
     c10::IntArrayRef size, SpyreTensorLayout device_layout,
     std::optional<c10::ScalarType> dtype_opt,

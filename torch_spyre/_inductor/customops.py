@@ -207,12 +207,16 @@ def _ones_scalar_fake(
     return torch.empty(1, dtype=dtype, device="spyre")
 
 
-@torch.library.custom_op("spyre::copy_from_d2d", mutates_args=("dst",), device_types="spyre")
+@torch.library.custom_op(
+    "spyre::copy_from_d2d", mutates_args=("dst",), device_types="spyre"
+)
 def copy_from_d2d(
     src: torch.Tensor,
     dst: torch.Tensor,
 ) -> None:
-    _compiled_copy_from_d2d = torch.compile(torch.ops.spyre.copy_from_d2d, dynamic=False)
+    _compiled_copy_from_d2d = torch.compile(
+        torch.ops.spyre.copy_from_d2d, dynamic=False
+    )
     return _compiled_copy_from_d2d(src, dst)
 
 
@@ -222,6 +226,7 @@ def _(
     dst: torch.Tensor,
 ) -> None:
     pass
+
 
 # Copy input into output starting at offsets along dimensions dims and
 # return the updated output.

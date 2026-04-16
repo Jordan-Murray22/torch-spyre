@@ -502,9 +502,11 @@ def clone(x, *, memory_format=None):
         result.freeze_layout_with_stride_order(stride_order)
     return result
 
+
 @register_spyre_lowering(torch.ops.spyre.copy_from_d2d)
 def lower_spyre_from_d2d(src, dst):
     lowering.mutate_to(dst, src)
+
 
 @register_spyre_lowering(torch.ops.spyre.overwrite)
 def lower_overwrite(input, output, dims, offsets):

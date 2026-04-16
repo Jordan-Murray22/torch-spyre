@@ -107,13 +107,13 @@ def spyre__local_scalar_dense(self):
 def spyre__copy_from(self, dst, non_blocking=False):
     # Check if views of same data
     if (
-      self.data_ptr() == dst.data_ptr() and
-      self.storage_offset() == dst.storage_offset() and
-      self.strides().equals(dst.strides()) and
-      self.sizes().equals(dst.sizes()) and
-      self.scalar_type() == dst.scalar_type() and
-      self.is_conj() == dst.is_conj() and
-      self.is_neg() == dst.is_neg()
+        self.data_ptr() == dst.data_ptr()
+        and self.storage_offset() == dst.storage_offset()
+        and self.strides().equals(dst.strides())
+        and self.sizes().equals(dst.sizes())
+        and self.scalar_type() == dst.scalar_type()
+        and self.is_conj() == dst.is_conj()
+        and self.is_neg() == dst.is_neg()
     ):
         return dst
 

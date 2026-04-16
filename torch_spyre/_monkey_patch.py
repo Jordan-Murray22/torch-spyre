@@ -13,7 +13,12 @@
 # limitations under the License.
 
 from typing import Optional
-from torch_spyre._C import get_spyre_tensor_layout, to_with_layout, empty_with_layout
+from torch_spyre._C import (
+    get_spyre_tensor_layout,
+    empty_with_layout,
+    spyre_empty_with_layout,
+    copy_host_to_device,
+)
 from torch_spyre._C import SpyreTensorLayout
 
 
@@ -62,7 +67,15 @@ def _patch_tensor_for_spyre():
         ):  # use original implementation if no layout is provided
             return orig_to(self, *args, **kwargs)
         else:
-            return to_with_layout(self, device_layout)
+            dst = spyre_empty_with_layout(
+                self.size(), self.strides(), self.dtype(), device_layout
+            )
+            if self.device.type == "cpu":
+                copy_host_to_device(self, dst)
+                return dst
+            else:
+                # device to device copy
+                return torch.ops.spyre.copy_from_d2d(self, dst)
 
     def spyre_empty(
         *args,
