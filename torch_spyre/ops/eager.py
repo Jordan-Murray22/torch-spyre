@@ -106,10 +106,6 @@ def spyre__local_scalar_dense(self):
 
 @torch.library.register_kernel("aten::_copy_from", ["spyre"])
 def spyre__copy_from(self, dst, non_blocking=False):
-
-    if non_blocking:       
-        warnings.warn(f"non_blocking is set to {non_blocking}", UserWarning, stacklevel=2)
-
     # Check if views of same data
     if (
         self.data_ptr() == dst.data_ptr()
@@ -135,6 +131,9 @@ def spyre__copy_from(self, dst, non_blocking=False):
         torch.ops.spyre.copy_from_d2d(self, dst)
         return dst
     else:
+        if non_blocking:       
+            warnings.warn(f"non_blocking is set to {non_blocking}", UserWarning, stacklevel=2)
+            
         torch.ops.aten._copy_from.default(self, dst, non_blocking)
         return dst    
 
