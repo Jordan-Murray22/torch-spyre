@@ -15,6 +15,7 @@
 import torch
 import torch_spyre.ops.fallbacks  # noqa: F401
 import torch_spyre._C as _C
+import warnings
 
 
 def maybe_wrap_dim(dim: int, ndims: int) -> int:
@@ -105,6 +106,10 @@ def spyre__local_scalar_dense(self):
 
 @torch.library.register_kernel("aten::_copy_from", ["spyre"])
 def spyre__copy_from(self, dst, non_blocking=False):
+
+    if non_blocking:       
+        warnings.warn(f"non_blocking is set to {non_blocking}", UserWarning, stacklevel=2)
+
     # Check if views of same data
     if (
         self.data_ptr() == dst.data_ptr()
@@ -121,13 +126,17 @@ def spyre__copy_from(self, dst, non_blocking=False):
         return dst
 
     if self.device.type == "cpu" and dst.device.type == "spyre":
-        return _C.copy_host_to_device(self, dst)
+        _C.copy_host_to_device(self, dst)
+        return dst
     elif self.device.type == "spyre" and dst.device.type == "cpu":
-        return _C.copy_device_to_host(self, dst)
+        _C.copy_device_to_host(self, dst)
+        return dst
     elif self.device.type == "spyre" and self.device == dst.device:
-        return torch.ops.spyre.copy_from_d2d(self, dst)
+        torch.ops.spyre.copy_from_d2d(self, dst)
+        return dst
     else:
-        return torch.ops.aten._copy_from.default(self, dst, non_blocking)
+        torch.ops.aten._copy_from.default(self, dst, non_blocking)
+        return dst    
 
 
 # INSERT_CODEGEN_HERE
