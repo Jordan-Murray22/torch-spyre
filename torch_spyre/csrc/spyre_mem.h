@@ -27,8 +27,6 @@ at::Tensor spyre_empty_strided(c10::IntArrayRef size, c10::IntArrayRef stride,
                                std::optional<c10::Device> device_opt,
                                std::optional<bool> pin_memory_opt);
 
-at::Tensor spyre_copy_from(const at::Tensor& self, const at::Tensor& dst,
-                           bool non_blocking);
 
 class SpyreTensorLayout;
 at::Tensor spyre_empty_with_layout(c10::IntArrayRef size,
@@ -36,8 +34,9 @@ at::Tensor spyre_empty_with_layout(c10::IntArrayRef size,
                                    c10::ScalarType dtype,
                                    SpyreTensorLayout device_layout);
 
-at::Tensor to_with_layout(const at::Tensor& self,
-                          SpyreTensorLayout device_layout);
+void copy_host_to_device(const at::Tensor& self, const at::Tensor& dst);
+void copy_device_to_host(const at::Tensor& self, const at::Tensor& dst);
+
 
 at::Tensor empty_with_layout(
     c10::IntArrayRef size, SpyreTensorLayout device_layout,

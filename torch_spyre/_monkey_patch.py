@@ -17,7 +17,12 @@ from torch_spyre.constants import DEVICE_NAME
 
 from typing import Optional
 from torch._dynamo.guards import GuardBuilder
-from torch_spyre._C import get_spyre_tensor_layout, to_with_layout, empty_with_layout
+from torch_spyre._C import (
+    get_spyre_tensor_layout,
+    empty_with_layout,
+    spyre_empty_with_layout,
+    copy_host_to_device,
+)
 from torch_spyre._C import SpyreTensorLayout
 
 
@@ -68,7 +73,36 @@ def _patch_tensor_for_spyre():
         ):  # use original implementation if no layout is provided
             return orig_to(self, *args, **kwargs)
         else:
-            return to_with_layout(self, device_layout)
+            # Check if copy kwarg is explicitly set
+            copy = kwargs.get("copy")
+
+            # If device_layout is the same as self and copy is not True, return self
+            current_layout = device_tensor_layout(self)
+            if (
+                not copy
+                and current_layout is not None
+                and current_layout == device_layout
+            ):
+                return self
+
+            dst = spyre_empty_with_layout(
+                self.size(), self.stride(), self.dtype, device_layout
+            )
+
+            if self.device.type == "cpu":
+                copy_host_to_device(self, dst)
+                return dst   
+            else: # device to device copy
+                # If device_layout is the same as self and copy is not True, return self
+                current_layout = device_tensor_layout(self)
+                if (
+                    not copy
+                    and current_layout is not None
+                    and current_layout == device_layout
+                ):
+                    return self
+                else:
+                    return torch.ops.spyre.copy_from_d2d(self, dst)
 
     def spyre_empty(
         *args,
