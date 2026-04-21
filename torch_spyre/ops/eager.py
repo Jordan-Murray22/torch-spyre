@@ -131,11 +131,13 @@ def spyre__copy_from(self, dst, non_blocking=False):
         torch.ops.spyre.copy_from_d2d(self, dst)
         return dst
     else:
-        if non_blocking:       
-            warnings.warn(f"non_blocking is set to {non_blocking}", UserWarning, stacklevel=2)
-            
+        if non_blocking:
+            warnings.warn(
+                f"non_blocking is set to {non_blocking}", UserWarning, stacklevel=2
+            )
+
         torch.ops.aten._copy_from.default(self, dst, non_blocking)
-        return dst    
+        return dst
 
 
 # INSERT_CODEGEN_HERE
