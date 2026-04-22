@@ -750,7 +750,6 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("empty.memory_format", TORCH_FN(spyre_empty));
   m.impl("empty_strided", TORCH_FN(spyre_empty_strided));
   m.impl("set_.source_Storage_storage_offset", TORCH_FN(spyre_set_storage));
-  m.impl("_copy_from", TORCH_FN(spyre_copy_from));
 }
 
 }  // namespace spyre
