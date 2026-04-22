@@ -102,7 +102,7 @@ def _patch_tensor_for_spyre():
                 dtype = self.dtype
 
             dst = spyre_empty_with_layout(
-                self.size(), self.stride(), self.dtype, device_layout
+                self.size(), self.stride(), dtype, device_layout
             )
 
             if self.device.type == "cpu":
