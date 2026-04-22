@@ -16,13 +16,23 @@
 from torch_spyre.constants import DEVICE_NAME
 
 from typing import Optional
-from torch._dynamo.guards import GuardBuilder
 from torch_spyre._C import (
     get_spyre_tensor_layout,
     empty_with_layout,
     spyre_empty_with_layout,
     copy_host_to_device,
 )
+
+from torch._dynamo.guards import GuardBuilder
+<<<<<<< HEAD
+from torch_spyre._C import (
+    get_spyre_tensor_layout,
+    empty_with_layout,
+    spyre_empty_with_layout,
+    copy_host_to_device,
+)
+=======
+>>>>>>> b8876dba7ac3b8fe9f7ddb39967acbdb365f6af3
 from torch_spyre._C import SpyreTensorLayout
 
 

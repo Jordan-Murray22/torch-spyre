@@ -23,6 +23,7 @@
 #include <c10/core/MemoryFormat.h>
 #include <c10/core/TensorOptions.h>
 #include <c10/util/ArrayRef.h>
+#include <pybind11/pybind11.h>
 #include <torch/library.h>
 #include <pybind11/pybind11.h>
 #include <util/sen_data_convert.h>
