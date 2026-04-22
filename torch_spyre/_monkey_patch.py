@@ -76,15 +76,6 @@ def _patch_tensor_for_spyre():
             # Check if copy kwarg is explicitly set
             copy = kwargs.get("copy")
 
-            # If device_layout is the same as self and copy is not True, return self
-            current_layout = device_tensor_layout(self)
-            if (
-                not copy
-                and current_layout is not None
-                and current_layout == device_layout
-            ):
-                return self
-
             dst = spyre_empty_with_layout(
                 self.size(), self.stride(), self.dtype, device_layout
             )
