@@ -260,7 +260,7 @@ def copy_device_to_host(self: torch.Tensor, dst: torch.Tensor) -> None:
         dst: Destination tensor on CPU
     """
     ...
-    
+
 def empty_with_layout(
     arg0: tuple[int, ...],
     arg1: SpyreTensorLayout,

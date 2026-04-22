@@ -77,7 +77,7 @@ def _patch_tensor_for_spyre():
             # Check if copy kwarg is explicitly set
             copy = kwargs.get("copy")
 
-             # Determine dtype from various possible sources
+            # Determine dtype from various possible sources
             dtype = None
             if len(args) > 0:
                 # If args[0] is a dtype instance, use it
@@ -86,17 +86,17 @@ def _patch_tensor_for_spyre():
                 # If args[0] is a Tensor, use its dtype
                 elif isinstance(args[0], torch.Tensor):
                     dtype = args[0].dtype
-            
+
             # Check for dtype in kwargs
             if dtype is None and "dtype" in kwargs:
                 dtype = kwargs["dtype"]
-            
+
             # Check for tensor kwarg
             if dtype is None and "tensor" in kwargs:
                 tensor_arg = kwargs["tensor"]
                 if isinstance(tensor_arg, torch.Tensor):
                     dtype = tensor_arg.dtype
-            
+
             # Fall back to self.dtype if no dtype was specified
             if dtype is None:
                 dtype = self.dtype
@@ -107,8 +107,8 @@ def _patch_tensor_for_spyre():
 
             if self.device.type == "cpu":
                 copy_host_to_device(self, dst)
-                return dst   
-            else: # device to device copy
+                return dst
+            else:  # device to device copy
                 # If device_layout is the same as self and copy is not True, return self
                 current_layout = device_tensor_layout(self)
                 if (
