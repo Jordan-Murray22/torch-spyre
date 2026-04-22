@@ -24,15 +24,6 @@ from torch_spyre._C import (
 )
 
 from torch._dynamo.guards import GuardBuilder
-<<<<<<< HEAD
-from torch_spyre._C import (
-    get_spyre_tensor_layout,
-    empty_with_layout,
-    spyre_empty_with_layout,
-    copy_host_to_device,
-)
-=======
->>>>>>> b8876dba7ac3b8fe9f7ddb39967acbdb365f6af3
 from torch_spyre._C import SpyreTensorLayout
 
 
@@ -85,6 +76,30 @@ def _patch_tensor_for_spyre():
         else:
             # Check if copy kwarg is explicitly set
             copy = kwargs.get("copy")
+
+             # Determine dtype from various possible sources
+            dtype = None
+            if len(args) > 0:
+                # If args[0] is a dtype instance, use it
+                if isinstance(args[0], torch.dtype):
+                    dtype = args[0]
+                # If args[0] is a Tensor, use its dtype
+                elif isinstance(args[0], torch.Tensor):
+                    dtype = args[0].dtype
+            
+            # Check for dtype in kwargs
+            if dtype is None and "dtype" in kwargs:
+                dtype = kwargs["dtype"]
+            
+            # Check for tensor kwarg
+            if dtype is None and "tensor" in kwargs:
+                tensor_arg = kwargs["tensor"]
+                if isinstance(tensor_arg, torch.Tensor):
+                    dtype = tensor_arg.dtype
+            
+            # Fall back to self.dtype if no dtype was specified
+            if dtype is None:
+                dtype = self.dtype
 
             dst = spyre_empty_with_layout(
                 self.size(), self.stride(), self.dtype, device_layout
