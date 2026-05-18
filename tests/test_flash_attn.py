@@ -31,9 +31,6 @@ def flash(Q,K,V, block_size):
 
         denominator = denominator* torch.exp(M - max_running) + exp_scores.sum(dim=-1)
         output = output* torch.exp(M - max_running).unsqueeze(-1) + torch.bmm(exp_scores.flatten(0,1), V_block.flatten(0,1)).unflatten(0, (B,H))
-        #exp_M_diff = torch.exp(M - max_running)
-        #denominator = denominator * exp_M_diff + exp_scores.sum(dim=-1)
-        #output = output * exp_M_diff.unsqueeze(-1) + torch.matmul(exp_scores, V_block)
 
         M = max_running
     output = output / denominator.unsqueeze(-1)
