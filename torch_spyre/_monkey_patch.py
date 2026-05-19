@@ -221,8 +221,7 @@ def _patch_tensor_for_spyre():
                 x.device.type != DEVICE_NAME
                 or x.device_tensor_layout() == expected_layout
             ),
-            [f"SpyreTensorLayout({guard.name}) == {expected_layout}"],
-            guard.user_stack,
+            [f"SpyreTensorLayout({guard.name}) == {expected_layout}"]
         )
 
     GuardBuilder.TENSOR_MATCH = _spyre_TENSOR_MATCH
