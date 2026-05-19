@@ -237,7 +237,12 @@ FP16_EPS = torch.finfo(torch.float16).eps  # 0.0009765625
 
 
 class TestOps(unittest.TestCase, metaclass=ParameterizedTestMeta):
-    torch.manual_seed(0xAFFE)
+    torch.manual_seed(0xAFFE)  # seeds cached_randn/cached_xavier calls in PARAMS below
+
+    def setUp(self):
+        super().setUp()
+        torch.manual_seed(0xAFFE)
+
     # Define parameter sets for each base test method
     # If parameterized, the base test method will not be invoked
     # The test methods that are not parameterized will be invoked
@@ -420,6 +425,19 @@ class TestOps(unittest.TestCase, metaclass=ParameterizedTestMeta):
                 ],
                 rand_type="xavier",
             ),
+        },
+        ("test_matmul_noncontiguous", "test_mm_relaxed"): {
+            "ops_dict": {"matmul": torch.matmul},
+            "param_sets": {
+                "3d": (
+                    cached_xavier((128, 2, 128)).transpose(0, 1),
+                    cached_xavier((128, 2, 256)).transpose(0, 1),
+                ),
+                "4d": (
+                    cached_xavier((2, 8, 128, 128)),
+                    cached_xavier((2, 128, 8, 128)).transpose(1, 2),
+                ),
+            },
         },
         ("test_large_matmul", "test_mm_relaxed"): {
             "ops_dict": {"matmul": torch.matmul},
