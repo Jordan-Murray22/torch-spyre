@@ -651,6 +651,8 @@ def spyre_min_dim_decomp(input, dim, keepdim=False):
         values = torch.ops.aten.amin(input, dim=dim, keepdim=keepdim)
         indices = torch.ops.aten.argmin(input, dim=dim, keepdim=keepdim)
         return torch.return_types.min((values, indices))
+
+
 @register_spyre_decomposition([torch.ops.aten.amax.out])
 def spyre_amax_out_decomp(input, dim=None, keepdim=False, *, out):
     """
@@ -661,8 +663,6 @@ def spyre_amax_out_decomp(input, dim=None, keepdim=False, *, out):
     result = torch.amax(input, dim=dim, keepdim=keepdim)
     out.copy_(result)
     return out
-
-
 
 
 @register_spyre_decomposition([torch.ops.aten.cat.default])
