@@ -520,56 +520,74 @@ def spyre__sdpa_overrideable(
     num_kvheads = key.size(1)
     max_seqlen_q = query.size(2)
     max_seqlen_kv = key.size(2)
+    head_dim = query.size(3)
 
     scaling_factor = scale
     if scaling_factor is None:
-        scaling_factor = 1.0 / math.sqrt(query.shape[-1])
-    scaling_factor = math.sqrt(scaling_factor)
+        scaling_factor = 1.0 / math.sqrt(head_dim)
 
-    query = query * scaling_factor
-    key = key * scaling_factor
+    if dropout_p > 0.0:
+        raise Unsupported("Attention dropout not implemented for Spyre")
 
     expansion = num_heads // num_kvheads
     if expansion != 1:
         key = key.unsqueeze(2).expand(-1, -1, expansion, -1, -1).flatten(1, 2)
         value = value.unsqueeze(2).expand(-1, -1, expansion, -1, -1).flatten(1, 2)
-    key_t = key.transpose(-2, -1)
 
-    attn = torch.matmul(query, key_t)
+    block_size = 128
+    output = torch.zeros_like(query)
+    M = torch.full(
+        (batch_size, num_heads, max_seqlen_q),
+        float("-inf"),
+        device=query.device,
+        dtype=query.dtype,
+    )
+    denominator = torch.zeros(
+        (batch_size, num_heads, max_seqlen_q), device=query.device, dtype=query.dtype
+    )
 
-    if is_causal:
-        assert attn_bias is None
-        attn_bias = torch.full_like(attn, float("-inf"))
-        attn_bias = attn_bias.triu(diagonal=1)
+    for start in range(0, max_seqlen_kv, block_size):
+        end = min(start + block_size, max_seqlen_kv)
+        K_block = key[:, :, start:end, :]
+        V_block = value[:, :, start:end, :]
+        K_block_T = K_block.transpose(-1, -2).contiguous()
 
-    if attn_bias is not None:
-        attn = attn + attn_bias
+        scores = torch.matmul(query, K_block_T) * scaling_factor
 
-    # TODO (aviros): Switch to _safe_softmax
-    attn = torch.softmax(attn, -1)
+        if is_causal:
+            causal_mask = torch.triu(
+                torch.full_like(scores, float("-inf")), diagonal=1 - start
+            )
+            scores = scores + causal_mask
 
-    if dropout_p > 0.0:
-        # TODO(aviros): Implement
-        raise Unsupported("Attention dropout not implemented for Spyre")
+        if attn_bias is not None:
+            scores = scores + attn_bias[:, start:end]
 
-    # Unused for now
+        scores = scores.transpose(-1, -2).contiguous()
+
+        block_max = torch.amax(scores, dim=-2)
+        max_running = torch.maximum(M, block_max)
+
+        exp_scores = torch.exp(scores - max_running.unsqueeze(-2))
+        correction = torch.exp(M - max_running)
+
+        denominator = denominator * correction + exp_scores.sum(dim=-2)
+        output = output * correction.unsqueeze(-1) + torch.bmm(
+            exp_scores.transpose(-1, -2).flatten(0, 1), V_block.flatten(0, 1)
+        ).unflatten(0, (batch_size, num_heads))
+
+        M = max_running
+
+    out = output / denominator.unsqueeze(-1)
+
     logsumexp = torch.empty(
         (batch_size, num_heads, max_seqlen_q), dtype=torch.float32, device="spyre"
     )
     philox_seed = torch.empty((1,), dtype=torch.float16, device="spyre")
     philox_offset = torch.empty((1,), dtype=torch.float16, device="spyre")
 
-    # B, H, S, E
-    out = torch.matmul(attn, value)
-
-    # B, S, H, E
-    # Do not remove contiguous here.
-    # This is needed to maintain the API promise from SDPA (attn needs to have same size+stride as q)
-    out = out.transpose(1, 2).clone(memory_format=torch.contiguous_format)
-
-    # Returns (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor philox_seed, Tensor philox_offset, Tensor debug_attn_mask)
     return (
-        out.transpose(1, 2),
+        out,
         logsumexp,
         None,
         None,
