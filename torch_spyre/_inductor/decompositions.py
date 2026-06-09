@@ -24,6 +24,7 @@ import torch._decomp as decomp
 from .constants import DEVICE_NAME
 from .errors import Unsupported
 from . import customops  # noqa: F401
+from . import spyre_hint
 
 import threading
 
@@ -524,7 +525,7 @@ def spyre__sdpa_overrideable(
 
     scaling_factor = scale
     if scaling_factor is None:
-        scaling_factor = 1.0 / math.sqrt(head_dim)
+        scaling_factor = 1.0 / math.sqrt(math.sqrt(head_dim))
 
     if dropout_p > 0.0:
         raise Unsupported("Attention dropout not implemented for Spyre")
@@ -534,7 +535,9 @@ def spyre__sdpa_overrideable(
         key = key.unsqueeze(2).expand(-1, -1, expansion, -1, -1).flatten(1, 2)
         value = value.unsqueeze(2).expand(-1, -1, expansion, -1, -1).flatten(1, 2)
 
-    block_size = 128
+    kv_block_size = 64
+    q_block_size = 64
+
     output = torch.zeros_like(query)
     M = torch.full(
         (batch_size, num_heads, max_seqlen_q),
@@ -546,37 +549,41 @@ def spyre__sdpa_overrideable(
         (batch_size, num_heads, max_seqlen_q), device=query.device, dtype=query.dtype
     )
 
-    for start in range(0, max_seqlen_kv, block_size):
-        end = min(start + block_size, max_seqlen_kv)
-        K_block = key[:, :, start:end, :]
-        V_block = value[:, :, start:end, :]
-        K_block_T = K_block.transpose(-1, -2).contiguous()
+    with spyre_hint(tiles={"batch_size": max(1, batch_size // 2)}):
+        with spyre_hint(tiles={"num_heads": max(1, num_heads // 4)}):
+            with spyre_hint(tiles={"max_seqlen_q": max(1, max_seqlen_q // q_block_size)}):
+                with spyre_hint(tiles={"max_seqlen_kv": max(1, max_seqlen_kv // kv_block_size)}):
+                    for start in range(0, max_seqlen_kv, kv_block_size):
+                        end = min(start + kv_block_size, max_seqlen_kv)
+                        K_block = key[:, :, start:end, :]
+                        V_block = value[:, :, start:end, :]
+                        K_block_T = K_block.transpose(-1, -2).contiguous()
 
-        scores = torch.matmul(query, K_block_T) * scaling_factor
+                        scores = torch.matmul(query * scaling_factor, K_block_T * scaling_factor)
 
-        if is_causal:
-            causal_mask = torch.triu(
-                torch.full_like(scores, float("-inf")), diagonal=1 - start
-            )
-            scores = scores + causal_mask
+                        if is_causal:
+                            causal_mask = torch.triu(
+                                torch.full_like(scores, float("-inf")), diagonal=1 - start
+                            )
+                            scores = scores + causal_mask
 
-        if attn_bias is not None:
-            scores = scores + attn_bias[:, start:end]
+                        if attn_bias is not None:
+                            scores = scores + attn_bias[..., start:end]
 
-        scores = scores.transpose(-1, -2).contiguous()
+                        scores = scores.transpose(-1, -2).contiguous()
 
-        block_max = torch.amax(scores, dim=-2)
-        max_running = torch.maximum(M, block_max)
+                        block_max = torch.amax(scores, dim=-2)
+                        max_running = torch.maximum(M, block_max)
 
-        exp_scores = torch.exp(scores - max_running.unsqueeze(-2))
-        correction = torch.exp(M - max_running)
+                        exp_scores = torch.exp(scores - max_running.unsqueeze(-2))
+                        correction = torch.exp(M - max_running)
 
-        denominator = denominator * correction + exp_scores.sum(dim=-2)
-        output = output * correction.unsqueeze(-1) + torch.bmm(
-            exp_scores.transpose(-1, -2).flatten(0, 1), V_block.flatten(0, 1)
-        ).unflatten(0, (batch_size, num_heads))
+                        denominator = denominator * correction + exp_scores.sum(dim=-2)
+                        output = output * correction.unsqueeze(-1) + torch.matmul(
+                            exp_scores.transpose(-1, -2), V_block
+                        )
 
-        M = max_running
+                        M = max_running
 
     out = output / denominator.unsqueeze(-1)
 
