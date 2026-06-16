@@ -110,8 +110,12 @@ std::unique_ptr<flex::RuntimeOperation> JobPlanStepHostCompute::construct(
   // Case 1: input_buffer_ is provided
   if (input_buffer_ != nullptr) {
     return make_host_callback_op([this](void*) {
-      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
-                                             input_buffer_);
+      try {
+        deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
+                                               input_buffer_);
+      } catch (const std::exception& e) {
+        TORCH_CHECK(false, "Host compute failed: ", e.what());
+      }
     });
   }
 
@@ -120,7 +124,11 @@ std::unique_ptr<flex::RuntimeOperation> JobPlanStepHostCompute::construct(
   // and it's {0}, it's for fake symbols
   if (ishape_.size() == 1 && ishape_[0] == 0) {
     return make_host_callback_op([this](void*) {
-      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, nullptr);
+      try {
+        deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, nullptr);
+      } catch (const std::exception& e) {
+        TORCH_CHECK(false, "Host compute failed: ", e.what());
+      }
     });
   }
 
@@ -135,7 +143,11 @@ std::unique_ptr<flex::RuntimeOperation> JobPlanStepHostCompute::construct(
   }
 
   return make_host_callback_op([this, addresses](void*) {
-    deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, &addresses);
+    try {
+      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, &addresses);
+    } catch (const std::exception& e) {
+      TORCH_CHECK(false, "Host compute failed: ", e.what());
+    }
   });
 }
 
