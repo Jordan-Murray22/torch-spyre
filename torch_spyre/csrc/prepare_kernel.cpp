@@ -395,7 +395,7 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
 
   try {
     bool import_success = hcm_data->importJsonStr(hcm_json_str);
-    TORCH_CHECK(import_success, "Failed to import Hcm from JSON");
+    TORCH_CHECK(import_success, "Failed to import Hcm from JSON: invalid HCM metadata");
   } catch (const std::exception& e) {
     TORCH_CHECK(false, "Exception during Hcm JSON import for ohandle '",
                 ohandle, "': ", e.what());
