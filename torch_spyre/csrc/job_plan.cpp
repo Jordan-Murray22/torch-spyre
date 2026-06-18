@@ -102,8 +102,24 @@ static int64_t composite_address_to_dmva(
 void JobPlanStepHostCompute::construct(LaunchContext& ctx,
                                        flex::RuntimeStream* flex_stream) const {
   // Helper lambda to build HostCallbackParams and launch on the stream
+  // Captures flex_stream to enable error propagation via stream error state
   auto launch_host_callback = [this, flex_stream](auto&& callback) {
-    flex::HostCallbackParams params(std::forward<decltype(callback)>(callback),
+    // Wrap the user callback to catch exceptions and propagate via stream
+    auto error_handling_callback = [callback = std::forward<decltype(callback)>(callback),
+                                     flex_stream](void* user_data) {
+      try {
+        callback(user_data);
+      } catch (const std::exception& e) {
+        // Set stream error state for deferred error propagation
+        // This will be surfaced when synchronize() is called
+        flex_stream->setError(std::current_exception());
+      } catch (...) {
+        // Catch all other exceptions
+        flex_stream->setError(std::current_exception());
+      }
+    };
+    
+    flex::HostCallbackParams params(std::move(error_handling_callback),
                                     nullptr, pipeline_barrier_);
     flex_stream->launchOperationHostCallback(&params);
   };
@@ -111,12 +127,8 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
   // Case 1: input_buffer_ is provided
   if (input_buffer_ != nullptr) {
     launch_host_callback([this](void*) {
-      try {
-        deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
-                                               input_buffer_);
-      } catch (const std::exception& e) {
-        TORCH_CHECK(false, "Host compute failed: ", e.what());
-      }
+      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
+                                             input_buffer_);
     });
     return;
   }
@@ -126,11 +138,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
   // and it's {0}, it's for fake symbols
   if (ishape_.size() == 1 && ishape_[0] == 0) {
     launch_host_callback([this](void*) {
-      try {
-        deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, nullptr);
-      } catch (const std::exception& e) {
-        TORCH_CHECK(false, "Host compute failed: ", e.what());
-      }
+      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, nullptr);
     });
     return;
   }
@@ -146,11 +154,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
   }
 
   launch_host_callback([this, addresses](void*) {
-    try {
-      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, &addresses);
-    } catch (const std::exception& e) {
-      TORCH_CHECK(false, "Host compute failed: ", e.what());
-    }
+    deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, &addresses);
   });
 }
 
