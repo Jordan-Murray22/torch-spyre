@@ -101,21 +101,21 @@ static int64_t composite_address_to_dmva(
 
 void JobPlanStepHostCompute::construct(LaunchContext& ctx,
                                        flex::RuntimeStream* flex_stream) const {
+  // Create a shared_ptr to the exception_ptr to ensure it stays alive
+  // for the duration of the async callback execution
+  auto deferred_exception_ptr = std::make_shared<std::exception_ptr>();
+  
   // Helper lambda to build HostCallbackParams and launch on the stream
-  // Captures flex_stream to enable error propagation via stream error state
-  auto launch_host_callback = [this, flex_stream](auto&& callback) {
-    // Wrap the user callback to catch exceptions and propagate via stream
+  auto launch_host_callback = [this, deferred_exception_ptr, flex_stream](auto&& callback) {
+    // Wrap the user callback to catch exceptions and store for deferred propagation
     auto error_handling_callback = [callback = std::forward<decltype(callback)>(callback),
-                                     flex_stream](void* user_data) {
+                                     deferred_exception_ptr](void* user_data) {
       try {
         callback(user_data);
-      } catch (const std::exception& e) {
-        // Set stream error state for deferred error propagation
-        // This will be surfaced when synchronize() is called
-        flex_stream->setError(std::current_exception());
       } catch (...) {
-        // Catch all other exceptions
-        flex_stream->setError(std::current_exception());
+        // Store exception for deferred propagation
+        // Host callbacks cannot throw directly through the flex stream
+        *deferred_exception_ptr = std::current_exception();
       }
     };
     
@@ -130,6 +130,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
       deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
                                              input_buffer_);
     });
+    ctx.deferred_exception = *deferred_exception_ptr;
     return;
   }
 
@@ -140,6 +141,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
     launch_host_callback([this](void*) {
       deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, nullptr);
     });
+    ctx.deferred_exception = *deferred_exception_ptr;
     return;
   }
 
@@ -156,6 +158,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
   launch_host_callback([this, addresses](void*) {
     deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, &addresses);
   });
+  ctx.deferred_exception = *deferred_exception_ptr;
 }
 
 void JobPlanStepHostCompute::write(std::ostream& os) const {
