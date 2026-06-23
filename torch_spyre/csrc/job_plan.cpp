@@ -104,23 +104,27 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
   // Create a shared_ptr to the exception_ptr to ensure it stays alive
   // for the duration of the async callback execution
   auto deferred_exception_ptr = std::make_shared<std::exception_ptr>();
-  
+
   // Helper lambda to build HostCallbackParams and launch on the stream
-  auto launch_host_callback = [this, deferred_exception_ptr, flex_stream](auto&& callback) {
-    // Wrap the user callback to catch exceptions and store for deferred propagation
-    auto error_handling_callback = [callback = std::forward<decltype(callback)>(callback),
-                                     deferred_exception_ptr](void* user_data) {
-      try {
-        callback(user_data);
-      } catch (...) {
-        // Store exception for deferred propagation
-        // Host callbacks cannot throw directly through the flex stream
-        *deferred_exception_ptr = std::current_exception();
-      }
-    };
-    
-    flex::HostCallbackParams params(std::move(error_handling_callback),
-                                    nullptr, pipeline_barrier_);
+  auto launch_host_callback = [this, deferred_exception_ptr,
+                               flex_stream](auto&& callback) {
+    // Wrap the user callback to catch exceptions and store for deferred
+    // propagation
+    auto error_handling_callback =
+        [callback = std::forward<decltype(callback)>(callback),
+         deferred_exception_ptr](void* user_data) {
+          try {
+            callback(user_data);
+          }
+          catch (...) {
+            // Store exception for deferred propagation
+            // Host callbacks cannot throw directly through the flex stream
+            *deferred_exception_ptr = std::current_exception();
+          }
+        };
+
+    flex::HostCallbackParams params(std::move(error_handling_callback), nullptr,
+                                    pipeline_barrier_);
     flex_stream->launchOperationHostCallback(&params);
   };
 

@@ -151,22 +151,24 @@ static std::string read_file_to_string(const std::filesystem::path& path) {
  * @return Parsed value
  * @throws torch::Error if parsing fails
  */
-static uint64_t safe_stoull(const std::string& str, const std::string& field_name) {
+static uint64_t safe_stoull(const std::string& str,
+                            const std::string& field_name) {
   try {
     size_t pos = 0;
     uint64_t value = std::stoull(str, &pos);
-    TORCH_CHECK(pos == str.length(), 
-                "Invalid ", field_name, " value '", str, 
+    TORCH_CHECK(pos == str.length(), "Invalid ", field_name, " value '", str,
                 "': contains non-numeric characters");
     return value;
-  } catch (const std::invalid_argument&) {
-    TORCH_CHECK(false, "Invalid ", field_name, " value '", str, 
+  }
+  catch (const std::invalid_argument&) {
+    TORCH_CHECK(false, "Invalid ", field_name, " value '", str,
                 "': not a valid number");
-  } catch (const std::out_of_range&) {
-    TORCH_CHECK(false, "Invalid ", field_name, " value '", str, 
+  }
+  catch (const std::out_of_range&) {
+    TORCH_CHECK(false, "Invalid ", field_name, " value '", str,
                 "': number out of range");
   }
-  return 0; // Unreachable
+  return 0;  // Unreachable
 }
 
 /**
@@ -176,22 +178,24 @@ static uint64_t safe_stoull(const std::string& str, const std::string& field_nam
  * @return Parsed value
  * @throws torch::Error if parsing fails
  */
-static int64_t safe_stoll(const std::string& str, const std::string& field_name) {
+static int64_t safe_stoll(const std::string& str,
+                          const std::string& field_name) {
   try {
     size_t pos = 0;
     int64_t value = std::stoll(str, &pos);
-    TORCH_CHECK(pos == str.length(),
-                "Invalid ", field_name, " value '", str,
+    TORCH_CHECK(pos == str.length(), "Invalid ", field_name, " value '", str,
                 "': contains non-numeric characters");
     return value;
-  } catch (const std::invalid_argument&) {
+  }
+  catch (const std::invalid_argument&) {
     TORCH_CHECK(false, "Invalid ", field_name, " value '", str,
                 "': not a valid number");
-  } catch (const std::out_of_range&) {
+  }
+  catch (const std::out_of_range&) {
     TORCH_CHECK(false, "Invalid ", field_name, " value '", str,
                 "': number out of range");
   }
-  return 0; // Unreachable
+  return 0;  // Unreachable
 }
 
 JobPlanBuilder::JobPlanBuilder(const std::string& spyrecode_dir,
@@ -320,7 +324,8 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnDevice(
               "ComputeOnDevice command missing 'job_bin_ptr' property");
 
   std::string job_bin_ptr_str = cmd["job_bin_ptr"].get<std::string>();
-  uint64_t job_bin_ptr = safe_stoull(job_bin_ptr_str, "ComputeOnDevice job_bin_ptr");
+  uint64_t job_bin_ptr =
+      safe_stoull(job_bin_ptr_str, "ComputeOnDevice job_bin_ptr");
 
   auto job_bin_addr =
       compute_offset_address(job_allocation_.at(0), job_bin_ptr);
@@ -352,8 +357,10 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
 
   try {
     pinned_buffer_map_[ohandle] = HostBuffer(buffer_size);
-  } catch (const std::bad_alloc&) {
-    TORCH_CHECK(false, "Failed to allocate pinned buffer for host compute output '",
+  }
+  catch (const std::bad_alloc&) {
+    TORCH_CHECK(false,
+                "Failed to allocate pinned buffer for host compute output '",
                 ohandle, "', size=", buffer_size, " bytes");
   }
 
@@ -397,8 +404,10 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
 
   try {
     bool import_success = hcm_data->importJsonStr(hcm_json_str);
-    TORCH_CHECK(import_success, "Failed to import Hcm from JSON: invalid HCM metadata");
-  } catch (const std::exception& e) {
+    TORCH_CHECK(import_success,
+                "Failed to import Hcm from JSON: invalid HCM metadata");
+  }
+  catch (const std::exception& e) {
     TORCH_CHECK(false, "Exception during Hcm JSON import for ohandle '",
                 ohandle, "': ", e.what());
   }
@@ -439,7 +448,8 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateDataTransfer(
       TORCH_CHECK(it != pinned_buffer_map_.end(), "Host handle '",
                   host_handle_str, "' not found in pinned buffer map");
       void* host_addr = it->second.data();
-      uint64_t device_ptr = safe_stoull(dev_ptr_str, "DataTransfer H2D dev_ptr");
+      uint64_t device_ptr =
+          safe_stoull(dev_ptr_str, "DataTransfer H2D dev_ptr");
       size_t transfer_size = safe_stoull(size_str, "DataTransfer H2D size");
 
       // Compute CompositeAddress with offset
@@ -465,7 +475,8 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateDataTransfer(
                   "DataTransfer D2H missing 'host_handle' property");
       std::string host_handle_str = cmd["host_handle"].get<std::string>();
 
-      uint64_t device_ptr = safe_stoull(dev_ptr_str, "DataTransfer D2H dev_ptr");
+      uint64_t device_ptr =
+          safe_stoull(dev_ptr_str, "DataTransfer D2H dev_ptr");
       size_t transfer_size = safe_stoull(size_str, "DataTransfer D2H size");
 
       // Allocate pinned buffer
@@ -475,8 +486,10 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateDataTransfer(
 
       try {
         pinned_buffer_map_[host_handle_str] = HostBuffer(transfer_size);
-      } catch (const std::bad_alloc&) {
-        TORCH_CHECK(false, "Failed to allocate pinned buffer for D2H transfer '",
+      }
+      catch (const std::bad_alloc&) {
+        TORCH_CHECK(false,
+                    "Failed to allocate pinned buffer for D2H transfer '",
                     host_handle_str, "', size=", transfer_size, " bytes");
       }
       void* host_addr = pinned_buffer_map_[host_handle_str].data();

@@ -247,10 +247,11 @@ void SpyreStream::launch(const JobPlan& plan,
   for (const auto& step : plan.steps) {
     step->construct(ctx, flex_stream);
   }
-  
+
   // Check for deferred exceptions from host callbacks
   // Host callbacks cannot throw directly through flex streams, so exceptions
-  // are stored in ctx.deferred_exception and rethrown here after stream operations
+  // are stored in ctx.deferred_exception and rethrown here after stream
+  // operations
   if (ctx.deferred_exception) {
     std::rethrow_exception(ctx.deferred_exception);
   }

@@ -184,12 +184,13 @@ struct LaunchContext {
    *
    */
   const std::vector<at::Tensor>& inputs_outputs;
-  
+
   /**
    * @brief Exception pointer for deferred error propagation from host callbacks
    *
-   * Host callbacks executed within flex streams cannot throw exceptions directly.
-   * Instead, they store exceptions here for later propagation during synchronize().
+   * Host callbacks executed within flex streams cannot throw exceptions
+   * directly. Instead, they store exceptions here for later propagation during
+   * synchronize().
    */
   mutable std::exception_ptr deferred_exception;
 };
