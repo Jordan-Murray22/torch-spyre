@@ -586,6 +586,11 @@ def spyre__sdpa_overrideable(
                     tiles={"max_seqlen_kv": max(1, max_seqlen_kv // kv_block_size)}
                 ):
                     for start in range(0, max_seqlen_kv, kv_block_size):
+                        # Causal skip: the entire KV block lies strictly in the
+                        # future for every query position — skip it.
+                        if is_causal and start >= max_seqlen_q:
+                            continue
+
                         end = min(start + kv_block_size, max_seqlen_kv)
                         K_block = key[:, :, start:end, :]
                         V_block = value[:, :, start:end, :]
