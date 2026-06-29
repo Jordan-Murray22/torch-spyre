@@ -651,3 +651,37 @@ def dequantize_fp8_with_scale(input: torch.Tensor, scale: torch.Tensor) -> torch
 def _(input: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     # Output is FP16 with same shape as input
     return torch.empty(input.size(), dtype=torch.float16, device=input.device)
+
+
+@torch.library.custom_op("spyre::causal_mask", mutates_args=(), device_types="spyre")
+def causal_mask(
+    seqlen_q: int,
+    seqlen_kv: int,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> torch.Tensor:
+    """
+    Build a causal mask on CPU and transfer to the Spyre device.
+
+    Shape: [1, 1, seqlen_q, seqlen_kv].  Entries are 0.0 (keep) or -inf (masked).
+
+    Building on CPU keeps tril/masked_fill_ away from Spyre and makes this
+    block opaque to torch.compile so the in-place masked_fill_ never appears
+    in the compiled graph.
+    """
+    causal_cpu = torch.tril(
+        torch.ones(seqlen_q, seqlen_kv, dtype=torch.bool, device="cpu")
+    )
+    mask_cpu = torch.zeros(1, 1, seqlen_q, seqlen_kv, dtype=dtype, device="cpu")
+    mask_cpu.masked_fill_(~causal_cpu, float("-inf"))
+    return mask_cpu.to(device=device)
+
+
+@causal_mask.register_fake
+def _(
+    seqlen_q: int,
+    seqlen_kv: int,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> torch.Tensor:
+    return torch.empty(1, 1, seqlen_q, seqlen_kv, dtype=dtype, device=device)

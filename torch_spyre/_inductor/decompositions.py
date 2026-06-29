@@ -577,6 +577,18 @@ def spyre__sdpa_overrideable(
         (batch_size, num_heads, max_seqlen_q), device=query.device, dtype=query.dtype
     )
 
+    # Precompute the causal additive mask once before entering the tiled loops.
+    # Shape [1, 1, max_seqlen_q, max_seqlen_kv]: 0.0 = keep, -inf = masked.
+    #
+    # spyre::causal_mask builds the mask on CPU (tril + masked_fill_) and
+    # transfers it to the query device. Wrapping this in a custom op makes the
+    # CPU-side in-place ops opaque to torch.compile, so assert_functional_graph
+    # is satisfied and the compiled graph sees only the resulting Spyre tensor.
+    if is_causal:
+        causal_mask = torch.ops.spyre.causal_mask(
+            max_seqlen_q, max_seqlen_kv, query.dtype, query.device
+        )
+
     with spyre_hint(tiles={"batch_size": max(1, batch_size // 2)}):
         with spyre_hint(tiles={"num_heads": max(1, num_heads // 4)}):
             with spyre_hint(
@@ -586,11 +598,6 @@ def spyre__sdpa_overrideable(
                     tiles={"max_seqlen_kv": max(1, max_seqlen_kv // kv_block_size)}
                 ):
                     for start in range(0, max_seqlen_kv, kv_block_size):
-                        # Causal skip: the entire KV block lies strictly in the
-                        # future for every query position — skip it.
-                        if is_causal and start >= max_seqlen_q:
-                            continue
-
                         end = min(start + kv_block_size, max_seqlen_kv)
                         K_block = key[:, :, start:end, :]
                         V_block = value[:, :, start:end, :]
@@ -601,11 +608,8 @@ def spyre__sdpa_overrideable(
                         )
 
                         if is_causal:
-                            causal_mask = torch.triu(
-                                torch.full_like(scores, float("-inf")),
-                                diagonal=1 - start,
-                            )
-                            scores = scores + causal_mask
+                            # Sliced along the KV dimension to match the block scores shape.
+                            scores = scores + causal_mask[..., start:end]
 
                         if attn_bias is not None:
                             scores = scores + attn_bias[..., start:end]
