@@ -31,11 +31,18 @@ on:
         type: string
         default: image_spyre_backend
 
-      # Flags appended to every `bash tests/run_test.sh <config>` call
+      # Flags appended to every `bash tests/run_test.sh <config>` call for the test job
       extra_test_flags:
-        description: Extra flags passed to run_test.sh (e.g. "-v" or "--cpu-compile -vvv -s")
+        description: Extra flags passed to run_test.sh for the test job (e.g. "-v" or "--cpu-compile -vvv -s")
         required: true
         type: string
+
+      # Flags appended to every `bash tests/run_test.sh <config>` call for the test_multi_spyre job
+      extra_test_flags_multi_spyre:
+        description: Extra flags passed to run_test.sh for the test_multi_spyre job (e.g. "-v")
+        required: false
+        type: string
+        default: ''
 
       # Whether to run checkout-pytorch (nightly only)
       checkout_pytorch:
@@ -202,12 +209,21 @@ jobs:
             config: torch_spyre_tests/inductor/test_coarse_tiling_config.yaml
           - name: Inductor Coarse Tile E2E
             config: torch_spyre_tests/inductor/test_coarse_tile_e2e_config.yaml
+          - name: Inductor Span Overflow Hint Analysis
+            config: torch_spyre_tests/inductor/test_span_overflow_hint_analysis_config.yaml
           - name: Inductor Unroll Loop Specs
             config: torch_spyre_tests/inductor/test_unroll_loop_specs_config.yaml
           - name: Inductor Work Division Hint
             config: torch_spyre_tests/inductor/test_work_division_hint_config.yaml
           - name: Inductor Tensor Transpose
             config: torch_spyre_tests/inductor/test_inductor_transpose_edge_config.yaml
+          # ---- Indirect Access tests ----
+          - name: Indirect Access Gather
+            config: torch_spyre_tests/inductor/test_indirect_access_gather_config.yaml
+          - name: Indirect Access Scatter
+            config: torch_spyre_tests/inductor/test_indirect_access_scatter_config.yaml
+          - name: Indirect Access Internals
+            config: torch_spyre_tests/inductor/test_indirect_access_internals_config.yaml
           # ---- Tensor tests ----
           - name: Tensor Coordinates
             config: torch_spyre_tests/tensors/test_coordinates_config.yaml
@@ -341,7 +357,7 @@ jobs:
         with:
           suite_name: ${{ matrix.suite.name }}
           config: tests/configs/${{ matrix.suite.config }}
-          extra_test_flags: ${{ inputs.extra_test_flags }}
+          extra_test_flags: ${{ inputs.extra_test_flags_multi_spyre }}
           parallel: 'false'
           junit_xml_path: ${{ env.REPORT_PATH }}
           report_name: ${{ env.REPORT_NAME }}
