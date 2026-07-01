@@ -659,14 +659,19 @@ def causal_mask(
     device: torch.device,
 ) -> torch.Tensor:
     """
-    Build a causal mask on CPU and transfer to the Spyre device.
+    Build a causal additive mask on CPU and transfer to the target device.
 
-    Shape: [1, 1, seqlen_q, seqlen_kv].  Entries are 0.0 (keep) or -inf (masked).
+    Shape: [1, 1, seqlen_q, seqlen_kv] in natural orientation: query i attends
+    to keys 0..i.  Entries are 0.0 (keep) or -inf (masked).  The kept diagonal
+    guarantees no fully-masked row (no 0/0 NaN denominator).
 
-    Building on CPU keeps tril/masked_fill_ away from Spyre and makes this
-    block opaque to torch.compile so the in-place masked_fill_ never appears
-    in the compiled graph.
+    Built entirely on CPU (tril + masked_fill_) so those in-place ops are
+    opaque to torch.compile — assert_functional_graph is satisfied and the
+    compiled graph only sees the resulting device tensor.  No device_types
+    restriction is set because there are no tensor arguments to dispatch on;
+    the device is an explicit parameter.
     """
+    # Causal boolean lower-triangular pattern: True = attend, False = mask
     causal_cpu = torch.tril(
         torch.ones(seqlen_q, seqlen_kv, dtype=torch.bool, device="cpu")
     )

@@ -567,15 +567,23 @@ def spyre__sdpa_overrideable(
     q_block_size = 64
 
     output = torch.zeros_like(query)
+
+    # FIXME: create a sparse M tensor via reduction
     M = torch.full(
-        (batch_size, num_heads, max_seqlen_q),
+        (batch_size, num_heads, max_seqlen_q, 64),
         float("-inf"),
         device=query.device,
         dtype=query.dtype,
     )
+    M = M.amax(dim=-1)  # batch_size, num_heads, max_seqlen_q sparse
+
+    # FIXME: create a sparse denominator tensor via reduction
     denominator = torch.zeros(
-        (batch_size, num_heads, max_seqlen_q), device=query.device, dtype=query.dtype
+        (batch_size, num_heads, max_seqlen_q, 64),
+        device=query.device,
+        dtype=query.dtype,
     )
+    denominator = denominator.amax(dim=-1)  # batch_size, num_heads, max_seqlen_q sparse
 
     # Precompute the causal additive mask once before entering the tiled loops.
     # Shape [1, 1, max_seqlen_q, max_seqlen_kv]: 0.0 = keep, -inf = masked.
@@ -597,37 +605,50 @@ def spyre__sdpa_overrideable(
                 with spyre_hint(
                     tiles={"max_seqlen_kv": max(1, max_seqlen_kv // kv_block_size)}
                 ):
-                    for start in range(0, max_seqlen_kv, kv_block_size):
-                        end = min(start + kv_block_size, max_seqlen_kv)
-                        K_block = key[:, :, start:end, :]
-                        V_block = value[:, :, start:end, :]
-                        K_block_T = K_block.transpose(-1, -2).contiguous()
-
+                    with spyre_hint(
+                        work_div={"num_heads": 4, "max_seqlen_q": 8, "max_seqlen_kv": 8}
+                    ):
+                        scaled_keys = (
+                            key * scaling_factor
+                        )  # batch_size, num_heads, max_seqlen_kv, head_dim
+                        keys_T = scaled_keys.transpose(
+                            -1, -2
+                        )  # batch_size, num_heads, head_dim, max_seqlen_kv
                         scores = torch.matmul(
-                            query * scaling_factor, K_block_T * scaling_factor
-                        )
+                            query * scaling_factor, keys_T
+                        )  # batch_size, num_heads, max_seqlen_q, max_seqlen_kv
 
                         if is_causal:
-                            # Sliced along the KV dimension to match the block scores shape.
-                            scores = scores + causal_mask[..., start:end]
+                            scores = scores + causal_mask
 
                         if attn_bias is not None:
-                            scores = scores + attn_bias[..., start:end]
+                            scores = scores + attn_bias
 
-                        scores = scores.transpose(-1, -2).contiguous()
+                        block_max = torch.amax(
+                            scores, dim=-1
+                        )  # batch_size, num_heads, max_seqlen_q sparse
+                        max_running = torch.maximum(
+                            M, block_max
+                        )  # batch_size, num_heads, max_seqlen_q sparse
 
-                        block_max = torch.amax(scores, dim=-2)
-                        max_running = torch.maximum(M, block_max)
+                        exp_scores = torch.exp(
+                            scores - max_running.unsqueeze(-1)
+                        )  # batch_size, num_heads, max_seqlen_q, max_seqlen_kv
+                        correction = torch.exp(
+                            M - max_running
+                        )  # batch_size, num_heads, max_seqlen_q sparse
 
-                        exp_scores = torch.exp(scores - max_running.unsqueeze(-2))
-                        correction = torch.exp(M - max_running)
+                        denominator.copy_(
+                            denominator * correction + exp_scores.sum(dim=-1)
+                        )  # batch_size, num_heads, max_seqlen_q sparse
+                        output.copy_(
+                            output * correction.unsqueeze(-1)
+                            + torch.matmul(exp_scores, value)
+                        )  # batch_size, num_heads, max_seqlen_q, head_dim
 
-                        denominator = denominator * correction + exp_scores.sum(dim=-2)
-                        output = output * correction.unsqueeze(-1) + torch.matmul(
-                            exp_scores.transpose(-1, -2), V_block
-                        )
-
-                        M = max_running
+                        M.copy_(
+                            max_running
+                        )  # batch_size, num_heads, max_seqlen_q sparse
 
     out = output / denominator.unsqueeze(-1)
 
