@@ -257,6 +257,48 @@ def _(
     pass
 
 
+# Copy src into dst in-place (the mutating primitive).
+# No @compile_once needed: the body calls aten::copy_ which dispatches
+# through spyre__copy_from → copy_from_d2d / copy_tensor — no cycle back
+# to spyre::copy_ itself.
+@torch.library.custom_op("spyre::copy_", mutates_args=("dst",), device_types="spyre")
+def copy_(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    dst.copy_(src)
+    return dst
+
+
+@copy_.register_fake
+def _(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    return dst
+
+
+@torch.library.register_kernel("spyre::copy_", ["cpu"])
+def copy__cpu(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    dst.copy_(src)
+    return dst
+
+
+# Functional (out-of-place) wrapper for spyre::copy_.
+# Returns a new tensor equal to dst with src written into it.
+# The graph sees a pure value-producing node; Inductor's reinplacer will
+# rewrite copy_f → copy_ (in-place) wherever it is safe to do so.
+@torch.library.custom_op("spyre::copy_f", mutates_args=(), device_types="spyre")
+def copy_f(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    result = dst.clone()
+    torch.ops.spyre.copy_(src, result)
+    return result
+
+
+@copy_f.register_fake
+def _(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
+    return dst.clone()
+
+
+inplaceable_ops[torch.ops.spyre.copy_f.default] = InplaceableOp(
+    torch.ops.spyre.copy_.default, 1
+)
+
+
 # Copy input into output starting at offsets along dimensions dims and
 # return the updated output.
 @torch.library.custom_op(

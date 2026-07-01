@@ -640,16 +640,19 @@ def spyre__sdpa_overrideable(
                             M - max_running
                         )  # batch_size, num_heads, max_seqlen_q sparse
 
-                        denominator.copy_(
-                            denominator * correction + exp_scores.sum(dim=-1)
+                        denominator = torch.ops.spyre.copy_f(
+                            denominator * correction + exp_scores.sum(dim=-1),
+                            denominator,
                         )  # batch_size, num_heads, max_seqlen_q sparse
-                        output.copy_(
+                        output = torch.ops.spyre.copy_f(
                             output * correction.unsqueeze(-1)
-                            + torch.matmul(exp_scores, value)
+                            + torch.matmul(exp_scores, value),
+                            output,
                         )  # batch_size, num_heads, max_seqlen_q, head_dim
 
-                        M.copy_(
-                            max_running
+                        M = torch.ops.spyre.copy_f(
+                            max_running,
+                            M,
                         )  # batch_size, num_heads, max_seqlen_q sparse
 
     out = output / denominator.unsqueeze(-1)
