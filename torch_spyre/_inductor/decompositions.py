@@ -569,21 +569,23 @@ def spyre__sdpa_overrideable(
     output = torch.zeros_like(query)
 
     # FIXME: create a sparse M tensor via reduction
-    M = torch.full(
+    M_reduced = torch.full(
         (batch_size, num_heads, max_seqlen_q, 64),
         float("-inf"),
         device=query.device,
         dtype=query.dtype,
     )
-    M = M.amax(dim=-1)  # batch_size, num_heads, max_seqlen_q sparse
+    M = M_reduced.amax(dim=-1)  # batch_size, num_heads, max_seqlen_q sparse
 
     # FIXME: create a sparse denominator tensor via reduction
-    denominator = torch.zeros(
+    denominator_reduced = torch.zeros(
         (batch_size, num_heads, max_seqlen_q, 64),
         device=query.device,
         dtype=query.dtype,
     )
-    denominator = denominator.amax(dim=-1)  # batch_size, num_heads, max_seqlen_q sparse
+    denominator = denominator_reduced.amax(
+        dim=-1
+    )  # batch_size, num_heads, max_seqlen_q sparse
 
     # Precompute the causal additive mask once before entering the tiled loops.
     # Shape [1, 1, max_seqlen_q, max_seqlen_kv]: 0.0 = keep, -inf = masked.
