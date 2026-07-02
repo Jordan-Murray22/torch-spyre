@@ -712,11 +712,15 @@ class SpyreKernel(Kernel[CSEVariable]):
         # Pool buffers are intermediates whose address is baked into the TensorArg
         # allocation dict; registering them as outputs would overflow SEGMENT_OFFSETS.
         # (lx buffers are already excluded from spyre_kernel_args in _tensor_arg.)
-        if "pool" not in layout.allocation:
+        # Also skip buffers marked as removed by Inductor's optimizer (e.g., by LX )
+        # This can occur when SDPA decomposition creates intermediate
+        # buffers that later get marked as dead code.
+        real_dst_name = V.graph.scheduler.mutation_real_name.get(name, name)
+        is_removed = real_dst_name in V.graph.removed_buffers
+        if "pool" not in layout.allocation and not is_removed:
             _ = self.args.output(name)
         index = sympy_subs(index, V.graph.sizevars.precomputed_replacements)
         dst = TensorAccess(name, index, layout)
-        real_dst_name = V.graph.scheduler.mutation_real_name.get(name, name)
         if real_dst_name != name:
             # Skip allocating an output buffer; this name is an alias to another buffer
             V.graph.removed_buffers.add(name)
