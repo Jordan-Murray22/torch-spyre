@@ -20,8 +20,8 @@
 #include <c10/core/Stream.h>
 
 #include <cstddef>
+#include <exception>
 #include <memory>
-#include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
 #include <utility>
@@ -226,6 +226,11 @@ void SpyreStream::launchHostCallback(flex::HostCallbackParams* params) const {
   resolveRuntimeHandle()->launchOperationHostCallback(params);
 }
 
+void SpyreStream::storeDeferredException(std::exception_ptr exception) const {
+  flex::RuntimeStream* handle = resolveRuntimeHandle();
+  handle->setError(exception);
+}
+
 void SpyreStream::launch(const JobPlan& plan,
                          const std::vector<at::Tensor>& args) const {
   // Validate all tensors are on Spyre device
@@ -241,14 +246,6 @@ void SpyreStream::launch(const JobPlan& plan,
   // this stream in order. flex owns the RuntimeOperation lifecycle.
   for (const auto& step : plan.steps) {
     step->construct(ctx, *this);
-  }
-
-  // Check for deferred exceptions from host callbacks
-  // Host callbacks cannot throw directly through flex streams, so exceptions
-  // are stored in ctx.deferred_exception and rethrown here after stream
-  // operations
-  if (ctx.deferred_exception) {
-    std::rethrow_exception(ctx.deferred_exception);
   }
 }
 

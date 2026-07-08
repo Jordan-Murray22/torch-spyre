@@ -14,13 +14,17 @@
 
 """Tests for launching simple compiled ops through JobPlan execution."""
 
+import copy
+import json
 import os
+import tempfile
 from typing import Tuple
 
 import pytest
 from torch.testing._internal.common_utils import TestCase
 import torch
 import torch._dynamo
+import torch_spyre
 
 from torch_spyre._inductor import config as _spyre_config
 
@@ -73,6 +77,35 @@ def _run_compiled_op(op_name: str, symbolic_args: bool) -> None:
     )
 
 
+def _create_mock_spyrecode(tmpdir: str, job_exec_plan) -> str:
+    """Create spyre code from a mock job exec plan for testing"""
+    spyrecode_dir = os.path.join(tmpdir, "spyreCodeDir")
+    os.makedirs(spyrecode_dir, exist_ok=True)
+
+    spyrecode_json = {
+        "JobPreparationPlan": [
+            {"command": "Allocate", "properties": {"size": "1024"}},
+            {
+                "command": "InitTransfer",
+                "properties": {
+                    "init_bin_file": "init_binary.bin",
+                    "dev_ptr": "120259084288",
+                    "size": "1024",
+                },
+            },
+        ],
+        "JobExecPlan": copy.deepcopy(job_exec_plan),
+    }
+
+    with open(os.path.join(spyrecode_dir, "spyrecode.json"), "w") as f:
+        json.dump(spyrecode_json, f, indent=2)
+
+    with open(os.path.join(spyrecode_dir, "init_binary.bin"), "wb") as f:
+        f.write(b"\x00" * 1024)
+
+    return spyrecode_dir
+
+
 class TestLaunchJobPlan(TestCase):
     """Test suite for JobPlan-backed compiled op execution.
 
@@ -97,6 +130,45 @@ class TestLaunchJobPlan(TestCase):
     def test_mul_matches_cpu_with_symbols(self):
         """mul with symbolic_args=True (default path)."""
         _run_compiled_op("mul", symbolic_args=True)
+
+    def test_invalid_hcm_metadata_surfaces_on_synchronize(self):
+        """Host callback failures should surface as RuntimeError on stream synchronize."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_exec_plan = [
+                {
+                    "command": "ComputeOnHost",
+                    "properties": {
+                        "ohandle": "output_buffer",
+                        "size": "1024",
+                        "ishape": ["0"],
+                        "ihandle": "",
+                        "hcm": {
+                            "vdci": {},
+                            "senConstants": [],
+                        },
+                    },
+                },
+                {
+                    "command": "DataTransfer",
+                    "properties": {
+                        "dirn": "false",
+                        "host_handle": "output_buffer",
+                        "dev_ptr": "120259084288",
+                        "size": "1024",
+                    },
+                },
+                {
+                    "command": "ComputeOnDevice",
+                    "properties": {"job_bin_ptr": "120259084288"},
+                },
+            ]
+            spyrecode_dir = _create_mock_spyrecode(tmpdir, job_exec_plan)
+            job_plan = torch_spyre._C.prepare_kernel(spyrecode_dir)
+            stream = torch.Stream("spyre")
+
+            with stream:
+                with pytest.raises(RuntimeError, match="Expect one DCI"):
+                    torch_spyre._C.launch_jobplan(job_plan, [])
 
 
 if __name__ == "__main__":
