@@ -554,6 +554,8 @@ def spyre__sdpa_overrideable(
     scaling_factor = scale
     if scaling_factor is None:
         scaling_factor = 1.0 / math.sqrt(math.sqrt(head_dim))
+    else:
+        scaling_factor = math.sqrt(scaling_factor)
 
     if dropout_p > 0.0:
         raise Unsupported("Attention dropout not implemented for Spyre")
@@ -655,7 +657,7 @@ def spyre__sdpa_overrideable(
                             M,
                         )  # batch_size, num_heads, max_seqlen_q sparse
 
-    out = output / denominator.unsqueeze(-1)
+    output = torch.ops.spyre.copy_f(output / denominator.unsqueeze(-1), output)
 
     logsumexp = torch.empty(
         (batch_size, num_heads, max_seqlen_q), dtype=torch.float32, device="spyre"
@@ -664,7 +666,7 @@ def spyre__sdpa_overrideable(
     philox_offset = torch.empty((1,), dtype=torch.float16, device="spyre")
 
     return (
-        out,
+        output,
         logsumexp,
         None,
         None,
