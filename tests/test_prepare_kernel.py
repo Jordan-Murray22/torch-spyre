@@ -402,6 +402,86 @@ class TestPrepareKernel:
             ):
                 torch_spyre._C.prepare_kernel(spyrecode_dir)
 
+    def test_stoull_allocate_negative_size(self):
+        """Test that negative size in Allocate command is rejected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_exec_plan = [
+                {
+                    "command": "ComputeOnDevice",
+                    "properties": {"job_bin_ptr": "120259084288"},
+                }
+            ]
+
+            spyrecode_dir = os.path.join(tmpdir, "spyreCodeDir")
+            os.makedirs(spyrecode_dir, exist_ok=True)
+
+            spyrecode_json = {
+                "JobPreparationPlan": [
+                    {"command": "Allocate", "properties": {"size": "-1024"}},
+                    {
+                        "command": "InitTransfer",
+                        "properties": {
+                            "init_bin_file": "init_binary.bin",
+                            "dev_ptr": "120259084288",
+                            "size": "1024",
+                        },
+                    },
+                ],
+                "JobExecPlan": job_exec_plan,
+            }
+
+            with open(os.path.join(spyrecode_dir, "spyrecode.json"), "w") as f:
+                json.dump(spyrecode_json, f, indent=2)
+
+            with open(os.path.join(spyrecode_dir, "init_binary.bin"), "wb") as f:
+                f.write(b"\x00" * 1024)
+
+            with pytest.raises(
+                RuntimeError,
+                match="negative value not allowed for unsigned integer",
+            ):
+                torch_spyre._C.prepare_kernel(spyrecode_dir)
+
+    def test_stoull_allocate_negative_size_with_leading_whitespace(self):
+        """Test that negative size with leading whitespace is rejected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_exec_plan = [
+                {
+                    "command": "ComputeOnDevice",
+                    "properties": {"job_bin_ptr": "120259084288"},
+                }
+            ]
+
+            spyrecode_dir = os.path.join(tmpdir, "spyreCodeDir")
+            os.makedirs(spyrecode_dir, exist_ok=True)
+
+            spyrecode_json = {
+                "JobPreparationPlan": [
+                    {"command": "Allocate", "properties": {"size": "  -512"}},
+                    {
+                        "command": "InitTransfer",
+                        "properties": {
+                            "init_bin_file": "init_binary.bin",
+                            "dev_ptr": "120259084288",
+                            "size": "1024",
+                        },
+                    },
+                ],
+                "JobExecPlan": job_exec_plan,
+            }
+
+            with open(os.path.join(spyrecode_dir, "spyrecode.json"), "w") as f:
+                json.dump(spyrecode_json, f, indent=2)
+
+            with open(os.path.join(spyrecode_dir, "init_binary.bin"), "wb") as f:
+                f.write(b"\x00" * 1024)
+
+            with pytest.raises(
+                RuntimeError,
+                match="negative value not allowed for unsigned integer",
+            ):
+                torch_spyre._C.prepare_kernel(spyrecode_dir)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

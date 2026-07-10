@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
 #include <utility>
@@ -224,11 +225,6 @@ void SpyreStream::launchCompute(flex::ComputeParams* params) const {
 
 void SpyreStream::launchHostCallback(flex::HostCallbackParams* params) const {
   resolveRuntimeHandle()->launchOperationHostCallback(params);
-}
-
-void SpyreStream::storeDeferredException(std::exception_ptr exception) const {
-  flex::RuntimeStream* handle = resolveRuntimeHandle();
-  handle->setError(exception);
 }
 
 void SpyreStream::launch(const JobPlan& plan,

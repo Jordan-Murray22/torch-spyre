@@ -14,8 +14,6 @@
 
 """Tests for launching simple compiled ops through JobPlan execution."""
 
-import copy
-import json
 import os
 import tempfile
 from typing import Tuple
@@ -27,6 +25,7 @@ import torch._dynamo
 import torch_spyre
 
 from torch_spyre._inductor import config as _spyre_config
+from test_prepare_kernel import TestPrepareKernel as tpk
 
 
 def _run_compiled_op(op_name: str, symbolic_args: bool) -> None:
@@ -75,35 +74,6 @@ def _run_compiled_op(op_name: str, symbolic_args: bool) -> None:
     torch.testing.assert_close(
         spyre_result, cpu_result, atol=0.1, rtol=0.1, equal_nan=True
     )
-
-
-def _create_mock_spyrecode(tmpdir: str, job_exec_plan) -> str:
-    """Create spyre code from a mock job exec plan for testing"""
-    spyrecode_dir = os.path.join(tmpdir, "spyreCodeDir")
-    os.makedirs(spyrecode_dir, exist_ok=True)
-
-    spyrecode_json = {
-        "JobPreparationPlan": [
-            {"command": "Allocate", "properties": {"size": "1024"}},
-            {
-                "command": "InitTransfer",
-                "properties": {
-                    "init_bin_file": "init_binary.bin",
-                    "dev_ptr": "120259084288",
-                    "size": "1024",
-                },
-            },
-        ],
-        "JobExecPlan": copy.deepcopy(job_exec_plan),
-    }
-
-    with open(os.path.join(spyrecode_dir, "spyrecode.json"), "w") as f:
-        json.dump(spyrecode_json, f, indent=2)
-
-    with open(os.path.join(spyrecode_dir, "init_binary.bin"), "wb") as f:
-        f.write(b"\x00" * 1024)
-
-    return spyrecode_dir
 
 
 class TestLaunchJobPlan(TestCase):
@@ -162,7 +132,10 @@ class TestLaunchJobPlan(TestCase):
                     "properties": {"job_bin_ptr": "120259084288"},
                 },
             ]
-            spyrecode_dir = _create_mock_spyrecode(tmpdir, job_exec_plan)
+            test_pk = tpk()
+            spyrecode_dir = test_pk.create_mock_spyrecode(
+                tmpdir, job_exec_plan=job_exec_plan
+            )
             job_plan = torch_spyre._C.prepare_kernel(spyrecode_dir)
             stream = torch.Stream("spyre")
 

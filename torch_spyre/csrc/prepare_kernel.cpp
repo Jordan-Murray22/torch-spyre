@@ -154,6 +154,18 @@ static std::string read_file_to_string(const std::filesystem::path& path) {
 static uint64_t safe_stoull(const std::string& str,
                             const std::string& field_name) {
   try {
+    // Check for negative sign. stoull silently wraps negatives to large
+    // unsigned values, so reject them explicitly)
+    size_t start_pos = 0;
+    // Skip whitespace
+    while (start_pos < str.length() && std::isspace(str[start_pos])) {
+      ++start_pos;
+    }
+    if (start_pos < str.length() && str[start_pos] == '-') {
+      TORCH_CHECK(false, "Invalid ", field_name, " value '", str,
+                  "': negative value not allowed for unsigned integer");
+    }
+
     size_t pos = 0;
     uint64_t value = std::stoull(str, &pos);
     TORCH_CHECK(pos == str.length(), "Invalid ", field_name, " value '", str,
@@ -438,13 +450,10 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
   std::string hcm_json_str = hcm_json.dump();
 
   try {
-    bool import_success = hcm_data->importJsonStr(hcm_json_str);
-    TORCH_CHECK(import_success,
-                "Failed to import Hcm from JSON: invalid HCM metadata");
+    hcm_data->importJsonStr(hcm_json_str);
   }
   catch (const std::exception& e) {
-    TORCH_CHECK(false, "Exception during Hcm JSON import for ohandle '",
-                ohandle, "': ", e.what());
+    TORCH_CHECK(false, "Failed to parse SpyreCode command: ", e.what());
   }
 
   // Create and return JobPlanStepHostCompute
