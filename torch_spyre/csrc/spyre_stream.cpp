@@ -20,7 +20,6 @@
 #include <c10/core/Stream.h>
 
 #include <cstddef>
-#include <exception>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>

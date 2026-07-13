@@ -453,7 +453,8 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
     hcm_data->importJsonStr(hcm_json_str);
   }
   catch (const std::exception& e) {
-    TORCH_CHECK(false, "Failed to parse SpyreCode command: ", e.what());
+    TORCH_CHECK(false, "Failed to import Hcm for ohandle '", ohandle,
+                "': ", e.what());
   }
 
   // Create and return JobPlanStepHostCompute
