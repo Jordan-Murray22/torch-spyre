@@ -660,7 +660,7 @@ std::unique_ptr<JobPlan> JobPlanBuilder::translateJobExecPlan() {
   // DataTransfer H2D that transfers the same correction blob (same ohandle /
   // host_handle_str).  We consume both commands together and build a single
   // JobPlanStepHostCompute that owns the device destination address and
-  // produces the staged buffer via RuntimeOperationHostProduce, retiring the
+  // produces the staged buffer via an inline producer lambda, retiring the
   // shared output_buffer_ pin and the separate H2D step.
   std::vector<std::unique_ptr<JobPlanStep>> steps;
   for (size_t i = 0; i < job_exec_plan.size(); ++i) {

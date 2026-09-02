@@ -508,19 +508,14 @@ class JobPlanStepCompute final : public JobPlanStep {
 /**
  * @brief Host-side computation step (e.g., program correction)
  *
- * Stores compiler metadata (Hcm) and, when `device_address` is provided,
- * the destination device address for the correction blob.  construct() uses
- * RuntimeOperationHostProduce to allocate + fill a RaiiBuffer and then
- * launches the correction H2D so both the produce and the transfer happen in
- * one step, retiring the shared output_buffer_ pin.
- *
- * When `device_address` is absent (legacy mode, no device address at
- * construction time) the step falls back to the HostCallback path that writes
- * into `output_buffer_`.
+ * Stores compiler metadata (Hcm) and the destination device address for the
+ * correction blob.  construct() builds a producer lambda (one of four cases
+ * depending on input source), calls it to allocate + fill a RaiiBuffer, then
+ * launches the correction H2D — both produce and transfer happen in one step,
+ * retiring the shared output_buffer_ pin.
  *
  * The RaiiBuffer produced at launch time carries the correction bytes; the
- * adjacent JobPlanStepH2D is removed from the plan by the builder when a
- * device address is wired in here.
+ * adjacent DataTransfer H2D is collapsed into this step by the builder.
  */
 class JobPlanStepHostCompute final : public JobPlanStep {
  public:
