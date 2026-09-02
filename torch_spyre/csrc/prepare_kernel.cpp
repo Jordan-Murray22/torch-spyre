@@ -700,6 +700,12 @@ std::unique_ptr<JobPlan> JobPlanBuilder::translateJobExecPlan() {
     }
   }
 
+  // Two-stream overlap. Emit the plain triple [HostCompute, H2D, Compute]; the
+  // ctors tag it with roles [Prep, Prep, Dev]. When SPYRE_HAZARD_TRACKER is on,
+  // the launch router splits it across S_prep/S_dev and flex inserts the
+  // cross-stream H2D->Compute edge; off keeps every step on S_dev. Every op
+  // keeps pipeline_barrier=true (per-stream FIFO). No plan rewrite here.
+
   // TODO(jni): expected_input_shapes to be added once provided in SpyreCode
   // Create pinned_buffers vector from pinned_buffer_map_
   // Move tensors from map to avoid unnecessary reference count increments

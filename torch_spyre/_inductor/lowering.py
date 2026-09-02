@@ -36,6 +36,7 @@ from .constants import (
 )
 from . import config
 import torch_spyre._inductor.customops  # noqa: F401
+import torch_spyre._inductor.distributed.spyre_library  # noqa: F401
 from torch_spyre.ops.fallbacks import fallback_ops
 from .ir import (
     SpyreReduction,
@@ -1339,18 +1340,6 @@ def _build_mutation_lowering(src, dst):
 @register_spyre_lowering(torch.ops.spyre.copy_forced)
 def lower_spyre_copy_forced(src, dst):
     return _build_mutation_lowering(src, dst)
-
-
-@register_spyre_lowering(torch.ops.spyre.opaque_copy_)
-def lower_spyre_opaque_copy_(value, acc):
-    # opaque_copy_ is functional at the FX/AOTAutograd level (see customops.py)
-    # so that assert_functional_graph never sees a mutation. The real
-    # mutating write into acc is introduced here, at lowering time, via the
-    # same MutationLayoutSHOULDREMOVE(acc) buffer that lower_spyre_copy_forced
-    # builds for copy_forced. Everything downstream that keys off
-    # MutationLayoutSHOULDREMOVE (e.g. wsr/coarse_tile.py) treats this
-    # identically to a copy_forced write.
-    return _build_mutation_lowering(value, acc)
 
 
 @register_spyre_lowering(torch.ops.spyre.overwrite)

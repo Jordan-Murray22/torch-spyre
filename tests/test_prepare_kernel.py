@@ -365,19 +365,26 @@ class TestPrepareKernel:
             with pytest.raises(RuntimeError, match="Step index out of range"):
                 job_plan.get_step_type(999)
 
-    def test_compute_on_host_valid(self):
-        """Test that a valid ComputeOnHost command builds successfully.
+    def test_prepare_emits_bare_split_triple(self):
+        """prepare emits the bare split triple, independent of the flag.
 
-        Verifies that a well-formed ComputeOnHost entry with all required
-        fields (ohandle, size, ishape, ihandle, hcm) successfully builds
-        a JobPlan.
+        PrepareKernel emits the plain [HostCompute, H2D, Compute] triple with
+        NO cross-stream event steps, carrying its by-type roles [Prep, Prep,
+        Dev] -- so the launch router splits it across S_prep/S_dev while flex
+        inserts the cross-stream RAW/WAR edges dynamically at enqueue. There is
+        no plan rewrite and no event-step emission (3 steps, never 7).
+
+        SPYRE_HAZARD_TRACKER only affects launch-time routing (whether the
+        S_prep/S_dev split engages), never the prepared plan's shape, so this
+        holds regardless of the flag.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             spyrecode_dir = self.create_mock_spyrecode(
                 tmpdir, exec_command="ComputeOnHost"
             )
-
-            # Should succeed without exceptions
+            # Must NOT raise: prepare emits the plain triple unconditionally
+            # (the static-edge block and its region-count TORCH_CHECK are
+            # gone), so nothing here depends on the program-region count.
             job_plan = torch_spyre._C.prepare_kernel(spyrecode_dir)
 
             # Verify JobPlan was created
@@ -766,11 +773,14 @@ class TestPrepareKernel:
             )
 
     def test_pipeline_barrier_correction_sequence(self):
-        """Correction sequence: HostCompute=False, H2D=True, Compute=True.
+        """Every step of the correction triple keeps barrier=True.
 
-        HostCompute opts out (overlap-eligible: runs while prior device compute
-        is in flight). H2D and Compute inherit the safe default True. Compute
-        must wait for H2D to close the RAW hazard on the seg-7 correction region.
+        The two-stream PoC preserves STRICT per-stream FIFO for ALL ops,
+        including HostCompute: overlap comes from the S_prep/S_dev stream split
+        plus flex's dynamic cross-stream RAW/WAR edges, NOT from relaxing any
+        op's pipeline_barrier. So no step in the correction triple
+        ([HostCompute, H2D, Compute]) may opt out of the barrier -- in
+        particular HostCompute must NOT carry the old barrier=False.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             spyrecode_dir = self.create_mock_spyrecode(
