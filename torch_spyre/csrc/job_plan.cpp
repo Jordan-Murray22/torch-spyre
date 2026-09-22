@@ -147,8 +147,9 @@ std::vector<int64_t> JobPlanStepHostCompute::resolveSymbolicArgs(
                 " out of range [0, ", tensors.size(), ")");
     switch (arg.kind) {
       case SymbolicArgKind::kAddress:
-        resolved[i] = static_cast<int64_t>(allocator.compositeAddressToDmva(
-            *get_composite_address(tensors[arg.tensor_id])));
+        resolved[i] =
+            static_cast<int64_t>(allocator.compositeAddressToDeviceAddress(
+                *get_composite_address(tensors[arg.tensor_id])));
         break;
       case SymbolicArgKind::kDimension:
         TORCH_CHECK(false,
@@ -164,10 +165,12 @@ std::vector<int64_t> JobPlanStepHostCompute::resolveSymbolicArgs(
 
 void JobPlanStepHostCompute::construct(LaunchContext& ctx,
                                        const SpyreStream& stream) const {
-  // Alignment for the staged RaiiBuffer (matches RaiiBuffer's own page-size
-  // default; will be upgraded to device IOVA alignment inside
-  // handleDmaDataConversionH2D when a real device handle is present).
-  static constexpr size_t kAlign = 4096;
+  // Alignment for the staged RaiiBuffer: use the device's IOVA alignment so
+  // the buffer is correctly mapped on all platforms (64 KB on PowerPC, 4 KB
+  // on x86/s390x).
+  const size_t kAlign = flex::RuntimeContext::getInstance()
+                            ->getDeviceHandle()
+                            ->GetIovaAlignment();
 
   // Build the producer body.  All three source cases produce the same type
   // (shared_ptr<RaiiBuffer>) via different fill strategies; the kind label
@@ -176,7 +179,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
 
   if (input_buffer_ != nullptr) {
     // Case 1: input_buffer_ is provided — use it directly as the source.
-    producer = [this]() -> std::shared_ptr<flex::RaiiBuffer> {
+    producer = [this, kAlign]() -> std::shared_ptr<flex::RaiiBuffer> {
       auto buf = std::make_shared<flex::RaiiBuffer>(correction_size_, kAlign);
       deeptools::processComputeOnHostCommand(*hcm_, buf->Pointer(),
                                              input_buffer_);
@@ -184,7 +187,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
     };
   } else if (ishape_.size() == 1 && ishape_[0] == 0) {
     // Case 2: fake symbols (ishape_ is {0}) — nullptr src argument.
-    producer = [this]() -> std::shared_ptr<flex::RaiiBuffer> {
+    producer = [this, kAlign]() -> std::shared_ptr<flex::RaiiBuffer> {
       auto buf = std::make_shared<flex::RaiiBuffer>(correction_size_, kAlign);
       deeptools::processComputeOnHostCommand(*hcm_, buf->Pointer(), nullptr);
       return buf;
@@ -201,7 +204,7 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
                 ") does not match compiled symbol count (",
                 hcm_->vdci.inputSym_.size(), ") for this host-compute step");
 
-    producer = [this,
+    producer = [this, kAlign,
                 resolved_addresses]() -> std::shared_ptr<flex::RaiiBuffer> {
       auto buf = std::make_shared<flex::RaiiBuffer>(correction_size_, kAlign);
       deeptools::processComputeOnHostCommand(*hcm_, buf->Pointer(),
@@ -216,14 +219,16 @@ void JobPlanStepHostCompute::construct(LaunchContext& ctx,
     int addr_idx = 0;
     auto& allocator = SpyreAllocator::instance();
     for (auto& tensor : ctx.inputs_outputs) {
-      int64_t addr = static_cast<int64_t>(allocator.compositeAddressToDmva(
-          (static_cast<SharedOwnerCtx*>(
-               tensor.storage().data_ptr().get_context())
-               ->composite_addr)));
+      int64_t addr =
+          static_cast<int64_t>(allocator.compositeAddressToDeviceAddress(
+              (static_cast<SharedOwnerCtx*>(
+                   tensor.storage().data_ptr().get_context())
+                   ->composite_addr)));
       addresses[addr_idx++] = addr;
     }
 
-    producer = [this, addresses]() -> std::shared_ptr<flex::RaiiBuffer> {
+    producer = [this, kAlign,
+                addresses]() -> std::shared_ptr<flex::RaiiBuffer> {
       auto buf = std::make_shared<flex::RaiiBuffer>(correction_size_, kAlign);
       // Use fast path with all tensor addresses.
       deeptools::processComputeOnHostCommandFast(
