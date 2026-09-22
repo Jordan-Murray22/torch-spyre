@@ -153,8 +153,13 @@ logger = get_inductor_logger("scratchpad.allocator")
 # * ``MemTrackBundle::initializeMemoryTrackers`` uses one 128-byte stick as the
 #   LX allocation granularity (``sharedtools/mem_track_bundle.cpp``).
 #
-# Torch and DXP independently consume ``DXP_LX_FRAC_AVAIL``.  These constants
-# define the fixed part of that cross-compiler ownership contract.
+# Torch and the backend compiler independently consume ``DXP_LX_FRAC_AVAIL``:
+# dbo reads it in ``dbo/src/Transforms/ProgramLayout.cpp`` with the same 0.2
+# default.  The ``DXP_`` prefix is historical -- the variable is a cross-compiler
+# contract, so it cannot be renamed from this side alone without silently
+# reintroducing the ownership mismatch of issue #3222 (Torch would read the new
+# name while the backend kept defaulting the old one).  These constants define
+# the fixed part of that contract.
 _LX_PHYSICAL_CAPACITY_BYTES = 2 << 20
 _LX_PROGRAM_DEBUG_RESERVATION_BYTES = 64 << 10
 _LX_TRACKER_CAPACITY_BYTES = (
@@ -2213,6 +2218,10 @@ class CoOptimizingAllocator(ScratchpadAllocator):
     def _solve(self, solver: MemoryPlanSolver, graph: GraphLowering) -> Sequence[Any]:
         assert isinstance(solver, CoreDivisionLayoutSolver)
         bufmap = {buf.name: buf for buf in solver.buffers}
+        # Built once here, not per op inside the loop below: every op's residency
+        # lookup is against this same whole-graph map, and rebuilding it per op
+        # turns an O(buffers) cost into O(ops * buffers) on the full graph.
+        default_is_lx = {name: buf.sym_is_lx for name, buf in bufmap.items()}
 
         # Keyed by buffer name, which is what ``predict_by_bundle`` needs to match
         # features to the ops in each estimated bundle. ``mem_usage_by_buf`` keys
@@ -2227,7 +2236,7 @@ class CoOptimizingAllocator(ScratchpadAllocator):
             if output_name not in bufmap:
                 continue
             op_features[output_name] = self._extract_op_features(
-                graph, output_name, bufmap
+                graph, output_name, bufmap, default_is_lx
             )
 
         from torch_spyre._inductor.cost_model import predict_bundles
@@ -2315,7 +2324,7 @@ class CoOptimizingAllocator(ScratchpadAllocator):
             )
         return result
 
-    def _extract_op_features(self, graph, output_name, buffers):
+    def _extract_op_features(self, graph, output_name, buffers, is_lx):
         """Build symbolic OpFeatures for one ComputedBuffer op (best-effort).
 
         Same extraction as dump_cost_model.extract_op_features, but keyed off
@@ -2323,7 +2332,8 @@ class CoOptimizingAllocator(ScratchpadAllocator):
         concrete values, so the resulting OpFeatures can be fed to
         predict_ops() to build a cost expression over the solver's own
         decision variables. The extractor reads each arg's symbolic residency
-        and the output's candidate divisions directly from ``buffers``.
+        from ``is_lx`` (built once by the caller over all of ``buffers``, not
+        per op); ``buffers`` itself supplies this op's own candidate divisions.
         """
         from torch_spyre._inductor.dump_cost_model import extract_op_features
         from torch_spyre._inductor.scratchpad.sa_cooptimizer import _work_slices
@@ -2332,7 +2342,7 @@ class CoOptimizingAllocator(ScratchpadAllocator):
         buffer = buffers[output_name]
         division = CoreDivision(splits=buffer.sym_core_divs)
         ws = _work_slices(op, division)
-        return extract_op_features(op, ws, buffers)
+        return extract_op_features(op, ws, is_lx=is_lx)
 
     def _finalize_lx_relayout_allocation(
         self,
