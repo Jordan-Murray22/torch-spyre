@@ -19,6 +19,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,7 +27,6 @@
 #include "spyre_allocator.h"
 #include "spyre_composite_address.h"
 #include "spyre_stream.h"
-#include "spyrecode-host-functions/processSpyreCodeArtifacts.h"
 
 namespace spyre {
 
@@ -132,11 +132,11 @@ void JobPlanStepCompute::write(std::ostream& os) const {
      << "\n";
 }
 
-std::vector<int64_t> JobPlanStepHostCompute::resolveSymbolicArgs(
+std::vector<flex::HostComputeArg> JobPlanStepHostCompute::buildHostComputeArgs(
     const std::vector<at::Tensor>& tensors,
     const std::vector<SymbolicArg>& symbolic_args) {
-  auto& allocator = SpyreAllocator::instance();
-  std::vector<int64_t> resolved(symbolic_args.size());
+  std::vector<flex::HostComputeArg> args;
+  args.reserve(symbolic_args.size());
   for (size_t i = 0; i < symbolic_args.size(); ++i) {
     const SymbolicArg& arg = symbolic_args[i];
     TORCH_CHECK(arg.tensor_id >= 0 &&
@@ -145,9 +145,10 @@ std::vector<int64_t> JobPlanStepHostCompute::resolveSymbolicArgs(
                 " out of range [0, ", tensors.size(), ")");
     switch (arg.kind) {
       case SymbolicArgKind::kAddress:
-        resolved[i] =
-            static_cast<int64_t>(allocator.compositeAddressToDeviceAddress(
-                *get_composite_address(tensors[arg.tensor_id])));
+        // Borrowed: flex translates this to a device address inside
+        // launchHostCompute, which runs before the launch returns.
+        args.emplace_back(static_cast<const flex::CompositeAddress*>(
+            get_composite_address(tensors[arg.tensor_id])));
         break;
       case SymbolicArgKind::kDimension:
         TORCH_CHECK(false,
@@ -158,106 +159,99 @@ std::vector<int64_t> JobPlanStepHostCompute::resolveSymbolicArgs(
                     static_cast<int32_t>(arg.kind));
     }
   }
+  return args;
+}
+
+std::vector<int64_t> JobPlanStepHostCompute::resolveSymbolicArgs(
+    const std::vector<at::Tensor>& tensors,
+    const std::vector<SymbolicArg>& symbolic_args) {
+  // Same slots, same order as the launch path; only the representation differs.
+  const std::vector<flex::HostComputeArg> args =
+      buildHostComputeArgs(tensors, symbolic_args);
+  auto& allocator = SpyreAllocator::instance();
+  std::vector<int64_t> resolved;
+  resolved.reserve(args.size());
+  for (const auto& arg : args) {
+    resolved.push_back(std::visit(
+        [&allocator](auto&& slot) -> int64_t {
+          using T = std::decay_t<decltype(slot)>;
+          if constexpr (std::is_same_v<T, const flex::CompositeAddress*>) {
+            return static_cast<int64_t>(
+                allocator.compositeAddressToDeviceAddress(*slot));
+          } else {
+            return slot;
+          }
+        },
+        arg));
+  }
   return resolved;
 }
 
 void JobPlanStepHostCompute::construct(LaunchContext& ctx,
                                        const SpyreStream& stream) const {
-  // Helper lambda to build HostCallbackParams and launch on the stream.
-  // flex::RuntimeStream::launchOperationHostCallback() invokes the callback
-  // synchronously in the calling thread, so exceptions propagate directly
-  // through launchHostCallback() to the caller
-  auto launch_host_callback = [this, &stream](auto&& callback) {
-    auto* params = flex::createHostCallbackParams(
-        std::forward<decltype(callback)>(callback), nullptr, pipeline_barrier_);
-    // Use a scope-exit guard so params is freed even if launchHostCallback
-    // throws (which it does when the synchronous host callback raises).
-    struct Guard {
-      flex::HostCallbackParams* p;
-      ~Guard() {
-        flex::destroyHostCallbackParams(p);
-      }
-    } guard{params};
-    stream.launchHostCallback(params);
-  };
+  // Build the argument slots flex resolves at launch time. Which cases produce
+  // slots mirrors what flex does with them in launchHostCompute:
+  //   - a non-null input_buffer_ is the patch source outright (Case 1), so the
+  //     slots are unused and stay empty;
+  //   - fake symbols (ishape_ == {0}) patch from nothing (Case 2), also empty;
+  //   - otherwise the slots ARE the patch input (Case 3), and flex takes the
+  //     deeptools fast path over them.
+  std::vector<flex::HostComputeArg> args;
 
-  // Case 1: input_buffer_ is provided
-  if (input_buffer_ != nullptr) {
-    launch_host_callback([this](void*) {
-      // Use regular path - input_buffer_ is already properly formatted
-      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
-                                             input_buffer_);
-    });
-    return;
-  }
-
-  // Case 2: fake symbols (ishape_ is {0})
+  const bool has_prefilled_input = input_buffer_ != nullptr;
   // Further discussion is required on "ishape". For now, it's vector<int64_t>,
-  // and it's {0}, it's for fake symbols
-  if (ishape_.size() == 1 && ishape_[0] == 0) {
-    launch_host_callback([this](void*) {
-      // Fake symbols don't need fast path - use regular path
-      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_, nullptr);
-    });
-    return;
+  // and if it's {0}, it's for fake symbols.
+  const bool has_fake_symbols = ishape_.size() == 1 && ishape_[0] == 0;
+
+  if (!has_prefilled_input && !has_fake_symbols) {
+    if (!ctx.symbolic_args.empty()) {
+      // Case 3a: typed symbolic payload — resolve each slot by kind.
+      args = buildHostComputeArgs(ctx.inputs_outputs, ctx.symbolic_args);
+
+      // Wrong symbolic_args count is an OOB read inside deeptools
+      // (DT_CHECK_MSG_OPT is compiled out by default).
+      TORCH_CHECK(args.size() == handle_->hcm().vdci.inputSym_.size(),
+                  "symbolic_args count (", args.size(),
+                  ") does not match compiled symbol count (",
+                  handle_->hcm().vdci.inputSym_.size(),
+                  ") for this host-compute step");
+    } else {
+      // Case 3b: no payload — legacy path: treat every context tensor as an
+      // address source in iteration order. Back-compat for callers that pass
+      // no symbolic_args (empty payload).
+      args.reserve(ctx.inputs_outputs.size());
+      for (const auto& tensor : ctx.inputs_outputs) {
+        args.emplace_back(
+            static_cast<const flex::CompositeAddress*>(
+                get_composite_address(tensor)));
+      }
+    }
   }
 
-  // Typed symbolic payload present — resolve each slot by kind.
-  if (!ctx.symbolic_args.empty()) {
-    std::vector<int64_t> resolved_addresses =
-        resolveSymbolicArgs(ctx.inputs_outputs, ctx.symbolic_args);
-
-    // Wrong symbolic_args count is an OOB read inside deeptools
-    // (DT_CHECK_MSG_OPT is compiled out by default).
-    TORCH_CHECK(resolved_addresses.size() == hcm_->vdci.inputSym_.size(),
-                "symbolic_args count (", resolved_addresses.size(),
-                ") does not match compiled symbol count (",
-                hcm_->vdci.inputSym_.size(), ") for this host-compute step");
-
-    launch_host_callback([this, resolved_addresses](void*) {
-      deeptools::processComputeOnHostCommand(*hcm_, output_buffer_,
-                                             &resolved_addresses);
-    });
-    return;
-  }
-
-  // Case 3b: no payload — legacy path: treat every context tensor as an
-  // address source in iteration order.  Back-compat for callers that pass no
-  // symbolic_args (empty payload).
-  std::vector<int64_t> addresses(ctx.inputs_outputs.size());
-  int addr_idx = 0;
-  auto& allocator = SpyreAllocator::instance();
-  for (auto& tensor : ctx.inputs_outputs) {
-    int64_t addr =
-        static_cast<int64_t>(allocator.compositeAddressToDeviceAddress(
-            (static_cast<SharedOwnerCtx*>(
-                 tensor.storage().data_ptr().get_context())
-                 ->composite_addr)));
-    addresses[addr_idx++] = addr;
-  }
-
-  launch_host_callback([this, addresses](void*) {
-    // Use fast path with all tensor addresses
-    // Returns true if fast path was actually used, false if fell back
-    bool used_fast_path = deeptools::processComputeOnHostCommandFast(
-        fast_plan_, *hcm_, output_buffer_, addresses.data(), addresses.size());
-  });
+  // Hand flex the whole correction sequence: it resolves the slots, allocates
+  // and fills the staging buffer, and launches the correction H2D into
+  // device_address_, freeing the buffer from that DMA's completion callback.
+  auto* params = flex::createHostComputeParams(
+      handle_.get(), correction_size_, &device_address_, input_buffer_,
+      std::move(args), pipeline_barrier_);
+  // Scope-exit guard so params is freed even if launchHostCompute throws, which
+  // it does when the (synchronous) deeptools patch raises.
+  struct Guard {
+    flex::HostComputeParams* p;
+    ~Guard() {
+      flex::destroyHostComputeParams(p);
+    }
+  } guard{params};
+  stream.launchHostCompute(params);
 }
 
 void JobPlanStepHostCompute::write(std::ostream& os) const {
   os << "  Host Compute\n";
-  os << "    Output buffer: " << output_buffer_ << "\n";
-  os << "    HCM metadata: " << (hcm_ ? "present" : "null") << "\n";
-  os << "    Fast path: "
-     << (fast_plan_.valid
-             ? "enabled"
-             : (fast_plan_.output_size == UINT32_MAX ? "disabled" : "building"))
-     << "\n";
-  if (fast_plan_.valid) {
-    os << "    Fast plan: " << fast_plan_.patches.size() << " patches, "
-       << fast_plan_.num_input_symbols << " input symbols, "
-       << fast_plan_.output_size << " bytes output\n";
-  }
+  os << "    Correction CompositeAddress: " << device_address_ << "\n";
+  os << "    Correction size: " << correction_size_ << " bytes\n";
+  os << "    HCM metadata: " << (handle_ ? "present" : "null") << "\n";
+  os << "    Input buffer: "
+     << (input_buffer_ ? "pre-filled" : "from argument slots") << "\n";
   os << "    Pipeline barrier: " << (pipeline_barrier_ ? "enabled" : "disabled")
      << "\n";
 }
@@ -364,7 +358,7 @@ std::string checkJobPlanStepOrdering(const std::vector<StepKind>& kinds,
   }
 
   // Gate: only validate plans built as HostCompute-led (the two-stream
-  // correction triple). A plan without a HostCompute is legacy single-stream
+  // correction pair). A plan without a HostCompute is legacy single-stream
   // and stays valid (backward-compat with the pre-overlap path: pure
   // ComputeOnDevice, standalone D2H, tensor .to() moves).
   bool has_host_compute = false;
@@ -392,23 +386,26 @@ std::string checkJobPlanStepOrdering(const std::vector<StepKind>& kinds,
     return std::string(i < seq.size() ? stepKindName(seq[i]) : "<end>");
   };
 
-  // The contract is ordering-only, not an exact triple: prepare can emit longer
-  // plans (e.g. HostCompute -> H2D -> Compute -> D2H), which project to
-  // S_prep = [HostCompute, H2D] and S_dev = [Compute, D2H]. What must hold is
-  // the leading-producer guarantee: prep produces (HostCompute -> H2D) before
-  // dev consumes (Compute). On the HAZARD path torch-spyre emits no cross-
-  // stream event steps; flex derives the RAW/WAR edges from these subsequences.
+  // The contract is ordering-only, not an exact shape: prepare can emit longer
+  // plans (e.g. HostCompute -> Compute -> D2H), which project to
+  // S_prep = [HostCompute] and S_dev = [Compute, D2H]. What must hold is the
+  // leading-producer guarantee: prep produces (HostCompute, which carries its
+  // own correction H2D inside flex) before dev consumes (Compute). On the
+  // HAZARD path torch-spyre emits no cross-stream event steps; flex derives the
+  // RAW/WAR edges from these subsequences.
 
-  // S_prep must BEGIN with HostCompute -> H2D and carry only {HostCompute, H2D}
-  // (the persistent host-compute stream; see StreamRole in job_plan.h).
+  // S_prep must BEGIN with HostCompute and carry only {HostCompute, H2D} (the
+  // persistent host-compute stream; see StreamRole in job_plan.h). No H2D is
+  // REQUIRED after it: the correction H2D is launched by flex from within
+  // launchHostCompute and is not a step of its own. A trailing H2D is still
+  // permitted for non-correction host-to-device transfers.
   {
-    if (prep.size() < 2 || prep[0] != StepKind::HostCompute ||
-        prep[1] != StepKind::H2D) {
+    if (prep.empty() || prep[0] != StepKind::HostCompute) {
       return "S_prep ordering violation: prep stream must begin with "
-             "HostCompute -> H2D, got " +
-             name_at(prep, 0) + " -> " + name_at(prep, 1);
+             "HostCompute, got " +
+             name_at(prep, 0);
     }
-    for (size_t i = 2; i < prep.size(); ++i) {
+    for (size_t i = 1; i < prep.size(); ++i) {
       if (prep[i] != StepKind::HostCompute && prep[i] != StepKind::H2D) {
         return "S_prep ordering violation: " + name_at(prep, i) +
                " is not permitted on the prep stream (prep carries only "

@@ -61,6 +61,12 @@ class SpyreStream {
   void launchD2H(flex::DmaParams* params) const;
   void launchCompute(flex::ComputeParams* params) const;
   void launchHostCallback(flex::HostCallbackParams* params) const;
+  
+  // Whole program-correction sequence in one call. flex resolves the argument
+  // slots to device addresses, allocates and fills the staging buffer, and
+  // launches the correction H2D with a completion callback that keeps the
+  // buffer alive -- torch-spyre allocates no staging memory of its own.
+  void launchHostCompute(const flex::HostComputeParams* params) const;
   // Device-side MEMORY_FILL DMA. Routes through the typed
   // flex::RuntimeStream::fillAsync overload, which performs the value->pattern
   // conversion internally (no FillParams construction here).

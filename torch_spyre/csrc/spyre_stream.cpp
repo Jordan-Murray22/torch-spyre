@@ -267,6 +267,12 @@ void SpyreStream::launchHostCallback(flex::HostCallbackParams* params) const {
   resolveRuntimeHandle()->launchOperationHostCallback(params);
 }
 
+void SpyreStream::launchHostCompute(
+    const flex::HostComputeParams* params) const {
+  RECORD_FUNCTION("launch::HostCompute", {});
+  resolveRuntimeHandle()->launchHostCompute(params);
+}
+
 void SpyreStream::fillAsync(const flex::CompositeAddress* dst, double value,
                             DataFormats dtype, bool use_dmai) const {
   RECORD_FUNCTION("launch::Memset", {});
@@ -284,7 +290,8 @@ void SpyreStream::launch(const JobPlan& plan,
 
   // Two-stream overlap topology:
   //   S_dev  = this stream (the default) — Compute (+ D2H).
-  //   S_prep = the persistent host-compute stream — HostCompute + H2D.
+  //   S_prep = the persistent host-compute stream — HostCompute (whose
+  //            correction H2D flex launches on the same stream) + H2D.
   // Compute overlaps HC/H2D because they run on different streams; every op
   // keeps pipeline_barrier=true (per-stream FIFO). S_prep must be the same
   // persistent flex handle each launch: getHostComputeStreamById is a pure

@@ -78,7 +78,7 @@ void set_downcast_warn_enabled(bool enabled) {
   g_downcast_warn_enabled.store(enabled, std::memory_order_relaxed);
 }
 
-// SPYRE_HAZARD_TRACKER: on = split the correction triple across S_prep/S_dev
+// SPYRE_HAZARD_TRACKER: on = split the correction pair across S_prep/S_dev
 // and let flex insert the cross-stream H2D->Compute edge. off = single-stream
 // floor (all on S_dev; FIFO enforces the edge). Default OFF to match flex: if
 // we split but flex isn't tracking, nothing enforces H2D->Compute and results
@@ -656,15 +656,16 @@ PYBIND11_MODULE(_C, m) {
         py::arg("symbolic_args"),
         "Test-only: resolve a symbolic_args payload to a list of int64 DMVA "
         "addresses.\n\n"
-        "Calls JobPlanStepHostCompute::resolveSymbolicArgs — the same function "
-        "used by the typed-payload resolution path at launch time — so the "
-        "result is identical to what would be passed to deeptools.");
+        "Calls JobPlanStepHostCompute::resolveSymbolicArgs, which resolves the "
+        "same slots in the same order as the launch path (buildHostComputeArgs) "
+        "and translates them exactly as flex does inside launchHostCompute — so "
+        "the result is identical to what would be passed to deeptools.");
 
   // ── Two-stream overlap: step-ordering validator + test hooks ──
 
   // Direct binding of the pure P2-14 ordering checker so a role-misplacement
   // rejection can be tested without constructing real steps (a real HostCompute
-  // needs a deeptools::Hcm + pinned buffers). Takes parallel lists of StepKind
+  // needs a flex::HostComputeHandle). Takes parallel lists of StepKind
   // names ("HostCompute"/"H2D"/... per stepKindName) and StreamRole names
   // ("Prep"/"Dev"), returns "" when valid or a human-readable error otherwise.
   m.def(

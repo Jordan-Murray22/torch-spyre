@@ -311,9 +311,10 @@ class TestSymbolicArg(TestCase):
         resolved vectors, each matching the expected per-slot address.
 
         Uses _resolve_symbolic_args, which calls
-        JobPlanStepHostCompute::resolveSymbolicArgs — the same function used
-        by the typed-payload resolution path at launch time — so the result is
-        identical to what would be passed to deeptools.
+        JobPlanStepHostCompute::resolveSymbolicArgs — resolving the same slots
+        in the same order as the launch path (buildHostComputeArgs) and
+        translating them as flex does inside launchHostCompute — so the result
+        is identical to what would be passed to deeptools.
         """
         t0 = torch.zeros(64, dtype=torch.float16, device="spyre")
         t1 = torch.zeros(64, dtype=torch.float16, device="spyre")

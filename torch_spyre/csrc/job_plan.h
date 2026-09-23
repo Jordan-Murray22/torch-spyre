@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <flex/flex.hpp>
+#include <flex/runtime_stream/host_compute_handle.hpp>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -28,7 +29,6 @@
 #include <variant>
 #include <vector>
 
-#include "spyrecode-host-functions/fast_process_hcm.h"
 #include "spyrecode-host-functions/spyrecode.h"
 
 namespace spyre {
@@ -175,8 +175,8 @@ class HostBuffer {
   bool pinned_ = false;
 };
 
-// Note: host compute metadata is defined in deeptools as Hcm, and host compute
-// function is defined as deeptools::processComputeOnHostCommand
+// Note: host compute metadata is defined in deeptools as Hcm. torch-spyre hands
+// it to flex via flex::createHostComputeHandle 
 
 /**
  * @brief Which stream a JobPlanStep runs on in the two-stream overlap topology.
@@ -195,7 +195,7 @@ enum class StreamRole { Prep, Dev };
  * ordering logic is a PURE function over a projected (StepKind, StreamRole)
  * sequence and can be unit-tested (e.g. a role-misplacement negative test)
  * without constructing heavyweight steps (a real HostCompute needs a
- * deeptools::Hcm plus pinned HostBuffers).
+ * flex::HostComputeHandle.
  */
 enum class StepKind {
   HostCompute,
@@ -378,11 +378,10 @@ inline std::ostream& operator<<(std::ostream& os, const JobPlanStep& step) {
  * All fields resolved during PrepareKernel. construct() produces a
  * RuntimeOperationH2D.
  *
- * When used for correction tensor DMA, the host_address points into a pinned
- * host buffer allocated during PrepareKernel and shared with the
- * JobPlanStepHostCompute that writes into it. The buffer is allocated once and
- * reused across launches — FIFO ordering within a stream guarantees the
- * HostCompute callback writes the buffer before the H2D reads it.
+ * The host_address points into a pinned host buffer allocated during
+ * PrepareKernel and owned by the JobPlan. Program correction does NOT use this
+ * step: its H2D is launched by flex inside SpyreStream::launchHostCompute, from
+ * a staging buffer flex allocates and frees itself.
  */
 class JobPlanStepH2D final : public JobPlanStep {
  public:
@@ -505,38 +504,45 @@ class JobPlanStepCompute final : public JobPlanStep {
 };
 
 /**
- * @brief Host-side computation step (e.g., program correction)
+ * @brief Host-side computation step (program correction)
  *
- * Stores compiler metadata (Hcm) and a shared output buffer during
- * PrepareKernel. The host computation uses
- * deeptools::processComputeOnHostCommand which takes Hcm metadata and performs
- * program correction or other host-side operations.
+ * Owns a flex::HostComputeHandle built during PrepareKernel: flex takes the
+ * compiler-provided Hcm metadata and eagerly compiles the deeptools patch plan
+ * behind the handle, so the per-launch fast path is ready before the first
+ * construct().
  *
- * The output buffer is a pointer to pinned host memory, shared
- * with the subsequent JobPlanStepH2D that transfers it to device. construct()
- * builds a closure capturing the metadata, composite addresses, and
- * the buffer, and produces a RuntimeOperationHostCallback.
- *
- * The shared buffer is allocated once during PrepareKernel and reused across
- * launches. For tiled execution, the same buffer is reused across iterations —
- * FIFO ordering guarantees each iteration's H2D consumes the buffer before the
- * next iteration's HostCompute overwrites it.
+ * construct() resolves the launch's symbolic arguments into
+ * flex::HostComputeArg slots and hands the whole correction sequence to flex in
+ * one call (SpyreStream::launchHostCompute). flex then owns every step of it:
+ * resolving each address slot, allocating the staging buffer, running the
+ * deeptools patch into it, and launching the correction H2D to
+ * device_address_ with a completion callback that frees the buffer. This step
+ * holds NO staging memory -- the correction H2D is part of the same call, so
+ * there is no separate JobPlanStepH2D for it and no pinned host buffer to
+ * recycle across launches.
  */
 class JobPlanStepHostCompute final : public JobPlanStep {
  public:
   /**
    * @brief Construct host compute step
    *
-   * @param hcm Compiler-provided metadata from deeptools (contains vdci and
-   *            senConstants describing how symbolic values must be interpreted)
-   * @param output_buffer Pinned host buffer (lifetime managed by JobPlan)
-   * @param input_buffer Pinned host buffer (lifetime managed by JobPlan)
+   * @param handle flex handle owning the compiler-provided Hcm metadata and its
+   *               pre-compiled patch plan (must not be null)
+   * @param device_address Destination of the correction H2D: the program
+   *                       region that the patched bytes are written into
+   * @param correction_size Byte length of the correction blob; flex allocates a
+   *                        staging buffer of exactly this size per launch
+   * @param input_buffer Optional pre-filled host input buffer (lifetime managed
+   *                     by JobPlan); nullptr when the args drive the patch
    * @param ishape used for constructing input buffer
    */
-  JobPlanStepHostCompute(std::unique_ptr<Hcm> hcm, void* output_buffer,
-                         const void* input_buffer, std::vector<int64_t> ishape)
-      : hcm_(std::move(hcm)),
-        output_buffer_(output_buffer),
+  JobPlanStepHostCompute(std::unique_ptr<flex::HostComputeHandle> handle,
+                         flex::CompositeAddress device_address,
+                         size_t correction_size, const void* input_buffer,
+                         std::vector<int64_t> ishape)
+      : handle_(std::move(handle)),
+        device_address_(std::move(device_address)),
+        correction_size_(correction_size),
         input_buffer_(input_buffer),
         ishape_(std::move(ishape)) {
     // Inherits pipeline_barrier_ = true from the base. HostCompute keeps strict
@@ -545,14 +551,6 @@ class JobPlanStepHostCompute final : public JobPlanStep {
     // its barrier. The inline synchronize() it triggers only drains S_prep, so
     // it never blocks device compute on S_dev.
     role_ = StreamRole::Prep;
-    // Try to build fast plan at construction time (prepare time)
-    if (hcm_) {
-      fast_plan_.valid = deeptools::buildFastHcmPatchPlan(fast_plan_, *hcm_);
-      if (!fast_plan_.valid) {
-        // Mark as permanently invalid so we don't retry
-        fast_plan_.output_size = UINT32_MAX;
-      }
-    }
   }
 
   void construct(LaunchContext& ctx, const SpyreStream& stream) const override;
@@ -560,35 +558,50 @@ class JobPlanStepHostCompute final : public JobPlanStep {
   void write(std::ostream& os) const override;
 
   /**
-   * @brief Resolve a symbolic_args payload to a vector of int64 values.
+   * @brief Resolve a symbolic_args payload to flex argument slots.
    *
-   * Each entry is resolved according to its kind: kAddress entries yield the
-   * HBM device address of the corresponding tensor; kDimension entries yield
-   * the pre-resolved dimension size stored in SymbolicArg::value.
+   * Each entry is resolved according to its kind: kAddress entries yield a
+   * pointer to the CompositeAddress of the corresponding tensor, which flex
+   * translates to a device address inside launchHostCompute; kDimension
+   * entries would yield the pre-resolved size stored in SymbolicArg::value.
    *
-   * Extracted from the typed-payload resolution path in construct() so that
-   * the resolution logic has a single definition shared by both the hot path
-   * and the _C._resolve_symbolic_args test seam. Keeping it as a static
-   * member of this class makes the ownership clear without exposing it as a
-   * top-level public symbol.
+   * The returned slots borrow from `tensors`: each address slot points at a
+   * CompositeAddress owned by its tensor's storage, so the slots must not
+   * outlive the launch that produced them. launchHostCompute resolves them
+   * synchronously, before it returns.
    *
    * Preconditions (enforced via TORCH_CHECK):
    *   - Every symbolic_args[i].tensor_id is a valid index into tensors.
    *   - Every symbolic_args[i].kind is kAddress (kDimension not yet
    *     implemented).
    */
+  static std::vector<flex::HostComputeArg> buildHostComputeArgs(
+      const std::vector<at::Tensor>& tensors,
+      const std::vector<SymbolicArg>& symbolic_args);
+
+  /**
+   * @brief Resolve a symbolic_args payload to a vector of int64 values.
+   *
+   * The int64 view of buildHostComputeArgs: address slots are translated to
+   * HBM device addresses exactly as flex translates them at launch time, so
+   * the result is what deeptools receives. Kept as the definition behind the
+   * _C._resolve_symbolic_args test seam, which asserts on that ordered vector
+   * without needing a live HCM or device execution. Keeping it a static member
+   * of this class makes the ownership clear without exposing it as a top-level
+   * public symbol.
+   */
   static std::vector<int64_t> resolveSymbolicArgs(
       const std::vector<at::Tensor>& tensors,
       const std::vector<SymbolicArg>& symbolic_args);
 
  private:
-  std::unique_ptr<Hcm> hcm_;
-  void* output_buffer_;       // Non-owning pointer (JobPlan owns the buffer)
+  std::unique_ptr<flex::HostComputeHandle> handle_;
+  // Correction destination in the program region. Held by value so
+  // construct() can hand flex a stable pointer on every launch.
+  flex::CompositeAddress device_address_;
+  size_t correction_size_;
   const void* input_buffer_;  // Non-owning pointer (JobPlan owns the buffer)
   std::vector<int64_t> ishape_;
-
-  // Pre-compiled patch plan for fast execution
-  mutable deeptools::FastHcmPatchPlan fast_plan_;
 };
 
 /**
@@ -716,17 +729,20 @@ StreamRole streamRoleFromName(const std::string& name);
  * rejection can be tested without building real steps.
  *
  * Since the STATIC correction-overlap path was retired, torch-spyre emits NO
- * cross-stream event steps: the correction plan is the plain role-tagged triple
- * [HostCompute(Prep), H2D(Prep), Compute(Dev)] and flex's per-region hazard
- * tracker inserts the RAW/WAR edges dynamically at enqueue. The validator
- * therefore checks ROLE ordering only:
+ * cross-stream event steps: the correction plan is the plain role-tagged pair
+ * [HostCompute(Prep), Compute(Dev)] and flex's per-region hazard tracker
+ * inserts the RAW/WAR edges dynamically at enqueue. The correction H2D is no
+ * longer a step of its own -- flex launches it inside launchHostCompute -- so
+ * S_prep begins with HostCompute and need carry nothing else. The validator
+ * checks ROLE ordering only:
  *  - Applied only when the plan has a HostCompute; a plan without one (pure
  *    ComputeOnDevice, standalone D2H, tensor .to() moves) is legacy
  *    single-stream and stays valid unconditionally (backward-compat).
- *  - S_prep (role Prep) must be exactly  HostCompute -> H2D  (no Compute on
- *    Prep).
- *  - S_dev (role Dev) must be exactly  Compute  (no HostCompute/H2D on Dev),
- *    preserving the leading-producer guarantee.
+ *  - S_prep (role Prep) must BEGIN with HostCompute and carry only
+ *    HostCompute / H2D (no Compute on Prep). A trailing H2D is still allowed:
+ *    non-correction host-to-device transfers keep the Prep role.
+ *  - S_dev (role Dev) must BEGIN with Compute and carry only Compute / D2H (no
+ *    HostCompute/H2D on Dev), preserving the leading-producer guarantee.
  */
 std::string checkJobPlanStepOrdering(const std::vector<StepKind>& kinds,
                                      const std::vector<StreamRole>& roles);

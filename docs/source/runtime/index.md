@@ -234,29 +234,39 @@ sequence safe: each step completes before the next one starts.
 
 Compiled binaries arrive with symbolic placeholders for tensor addresses that
 are only known at launch (allocator output, padding, batch shape). The runtime
-patches them in three ordered steps:
+patches them in two ordered steps:
 
 :::{figure} ../_static/images/runtime/program-correction.svg
-:alt: HostCompute step writes a correction buffer, H2D copies it to the device, Compute runs the patched kernel
+:alt: HostCompute step fills a staging buffer and launches the correction H2D into the program region, then Compute runs the patched kernel
 :width: 90%
 :align: center
 
-Three ordered `RuntimeOperation`s on a stream: a CPU callback computes the corrections into a pinned host buffer, an H2D step DMAs the buffer into the program region, and the kernel runs after reading the corrections. The same pinned buffer cycles across iterations.
+A correction sequence on a stream: the host computes the corrections into a staging buffer, an H2D DMAs the buffer into the program region, and the kernel runs after reading the corrections. flex owns the staging buffer and the DMA — both live inside the HostCompute step.
 :::
 
-1. **`JobPlanStepHostCompute`** runs on the host. It calls into deeptools'
-   `processComputeOnHostCommand` with compiler-supplied metadata (`Hcm`) and
-   writes a small correction blob into a pinned host buffer. The closure
-   captures the metadata, the destination CompositeAddresses, and the buffer
-   pointer.
-2. **`JobPlanStepH2D`** copies that buffer into the program region on the device.
-3. **`JobPlanStepCompute`** then runs the kernel. The device-side prologue
+1. **`JobPlanStepHostCompute`** runs on the host. It resolves this launch's
+   symbolic arguments into `flex::HostComputeArg` slots and hands the whole
+   correction sequence to flex through `SpyreStream::launchHostCompute`. flex
+   then translates each slot to a device address, allocates a staging buffer,
+   calls deeptools' `processComputeOnHostCommand` (or the pre-compiled fast
+   path) to write the correction blob into it, and launches the correction H2D
+   into the program region.
+2. **`JobPlanStepCompute`** then runs the kernel. The device-side prologue
    reads the corrections, patches the symbolic operands, and starts execution.
 
-The pinned host buffer is allocated once during `prepareKernel` and reused
-across launches. For tiled execution the same buffer cycles through every
-iteration — FIFO ordering guarantees each iteration's H2D consumes the buffer
-before the next iteration's HostCompute overwrites it.
+SpyreCode still expresses the correction as two commands — a `ComputeOnHost`
+and the `DataTransfer` H2D that ships its output handle. `prepareKernel` folds
+the pair into the single `JobPlanStepHostCompute` above and emits no
+`JobPlanStepH2D` for it; the transfer's destination becomes that step's
+correction address.
+
+torch-spyre allocates no correction buffer at all. flex allocates a fresh
+staging buffer per launch inside `launchHostCompute` and frees it from the
+correction H2D's completion callback, so nothing is recycled across launches
+and there is no reused buffer for a later iteration to overwrite early. The
+compiler metadata (`Hcm`) is handed to flex once during `prepareKernel` via
+`flex::createHostComputeHandle`, which compiles the deeptools patch plan
+up front so the per-launch fast path is ready before the first launch.
 
 ## Multi-card and distributed execution
 

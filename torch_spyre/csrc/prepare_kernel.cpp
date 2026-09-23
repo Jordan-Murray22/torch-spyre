@@ -403,23 +403,33 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
               "ComputeOnHost command missing 'ohandle' property");
   std::string ohandle = cmd["ohandle"].get<std::string>();
 
-  // Allocate pinned buffer
-  auto it = pinned_buffer_map_.find(ohandle);
-  TORCH_CHECK(it == pinned_buffer_map_.end(), "ohandle '", ohandle,
-              "' already exists in pinned buffer map");
   TORCH_CHECK(cmd.contains("size"),
               "ComputeOnHost command missing 'size' property");
   std::string size_str = cmd["size"].get<std::string>();
-  size_t buffer_size = safe_stoull(size_str, "ComputeOnHost size");
+  size_t correction_size = safe_stoull(size_str, "ComputeOnHost size");
 
-  try {
-    pinned_buffer_map_[ohandle] = HostBuffer(buffer_size);
-  }
-  catch (const std::bad_alloc&) {
-    TORCH_CHECK(false,
-                "Failed to allocate pinned buffer for host compute output '",
-                ohandle, "', size=", buffer_size, " bytes");
-  }
+  // No staging buffer is allocated here: flex allocates one of exactly
+  // correction_size bytes per launch inside launchHostCompute and frees it from
+  // the correction H2D's completion callback. What this step needs from
+  // PrepareKernel is only where that H2D lands, which the paired DataTransfer
+  // declares.
+  auto target_it = correction_targets_.find(ohandle);
+  TORCH_CHECK(target_it != correction_targets_.end(),
+              "ComputeOnHost ohandle '", ohandle,
+              "' has no paired H2D DataTransfer in the JobExecPlan; program "
+              "correction needs one to know where to write the correction");
+  const CorrectionTarget& target = target_it->second;
+
+  // The blob the host compute produces and the bytes the DataTransfer ships
+  // must be the same length: flex sizes both the staging buffer and the DMA
+  // from correction_size, so a mismatch would over- or under-read the program
+  // region instead of failing.
+  TORCH_CHECK(target.size == correction_size, "ComputeOnHost ohandle '",
+              ohandle, "' declares size=", correction_size,
+              " but its paired H2D DataTransfer declares size=", target.size);
+
+  flex::CompositeAddress correction_address = compute_offset_address(
+      job_allocation_.at(0), target.dev_ptr, correction_size);
 
   // Parse ishape
   // TODO(jni): further discussion is required on "ishape". See #2522. For now,
@@ -444,7 +454,7 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
   std::string ihandle = cmd["ihandle"].get<std::string>();
   if (!ihandle.empty()) {
     // Get input buffer from pinned_buffer_map_
-    it = pinned_buffer_map_.find(ihandle);
+    auto it = pinned_buffer_map_.find(ihandle);
     TORCH_CHECK(it != pinned_buffer_map_.end(), "ihandle '", ihandle,
                 "' not found in pinned buffer map");
     inp_ptr = it->second.data();
@@ -467,9 +477,13 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
                 "': ", e.what());
   }
 
-  // Create and return JobPlanStepHostCompute
+  // Hand the metadata to flex, which takes ownership of the Hcm and compiles
+  // the deeptools patch plan behind the handle now, at prepare time, so the
+  // per-launch fast path is ready before the first launch.
   return std::make_unique<JobPlanStepHostCompute>(
-      std::move(hcm_data), pinned_buffer_map_[ohandle].data(), inp_ptr, ishape);
+      flex::createHostComputeHandle(std::move(hcm_data)),
+      std::move(correction_address), correction_size, inp_ptr,
+      std::move(ishape));
 }
 
 std::unique_ptr<JobPlanStep> JobPlanBuilder::translateDataTransfer(
@@ -604,6 +618,77 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateCommand(
   return nullptr;
 }
 
+void JobPlanBuilder::pairCorrectionTransfers(
+    const nlohmann::json& job_exec_plan) {
+  // First: every ohandle a ComputeOnHost produces. Malformed commands are
+  // skipped rather than rejected here -- translateComputeOnHost owns the
+  // per-field validation and its error messages.
+  std::unordered_map<std::string, size_t> ohandle_command;
+  for (size_t i = 0; i < job_exec_plan.size(); ++i) {
+    const auto& cmd = job_exec_plan[i];
+    if (!cmd.contains("command") || !cmd["command"].is_string() ||
+        cmd["command"].get<std::string>() != "ComputeOnHost") {
+      continue;
+    }
+    if (!cmd.contains("properties")) {
+      continue;
+    }
+    const auto& props = cmd["properties"];
+    if (!props.contains("ohandle") || !props["ohandle"].is_string()) {
+      continue;
+    }
+    std::string ohandle = props["ohandle"].get<std::string>();
+    auto [it, inserted] = ohandle_command.emplace(ohandle, i);
+    TORCH_CHECK(inserted, "Duplicate ComputeOnHost ohandle '", ohandle,
+                "' in JobExecPlan (commands ", it->second, " and ", i,
+                "); each correction needs its own output handle");
+  }
+
+  if (ohandle_command.empty()) {
+    return;
+  }
+
+  // Then: the H2D DataTransfer that ships each of those handles to the device.
+  // Only a fully-specified transfer is folded; anything missing a field is left
+  // in place so translateDataTransfer reports it as it always has.
+  for (size_t i = 0; i < job_exec_plan.size(); ++i) {
+    const auto& cmd = job_exec_plan[i];
+    if (!cmd.contains("command") || !cmd["command"].is_string() ||
+        cmd["command"].get<std::string>() != "DataTransfer" ||
+        !cmd.contains("properties")) {
+      continue;
+    }
+    const auto& props = cmd["properties"];
+    if (!props.contains("dirn") || !props["dirn"].is_string() ||
+        parse_transfer_direction(props["dirn"].get<std::string>()) !=
+            TransferDirection::HostToDevice) {
+      continue;
+    }
+    if (!props.contains("host_handle") || !props["host_handle"].is_string() ||
+        !props.contains("dev_ptr") || !props["dev_ptr"].is_string() ||
+        !props.contains("size") || !props["size"].is_string()) {
+      continue;
+    }
+    std::string host_handle = props["host_handle"].get<std::string>();
+    if (ohandle_command.find(host_handle) == ohandle_command.end()) {
+      continue;  // an ordinary H2D, not a correction transfer
+    }
+    const bool inserted =
+        correction_targets_
+            .emplace(host_handle,
+                     CorrectionTarget{
+                         safe_stoull(props["dev_ptr"].get<std::string>(),
+                                     "DataTransfer H2D dev_ptr"),
+                         safe_stoull(props["size"].get<std::string>(),
+                                     "DataTransfer H2D size")})
+            .second;
+    TORCH_CHECK(inserted,
+                "Duplicate H2D DataTransfer for ComputeOnHost ohandle '",
+                host_handle, "' at JobExecPlan command ", i);
+    folded_correction_transfers_.insert(i);
+  }
+}
+
 std::unique_ptr<JobPlan> JobPlanBuilder::translateJobExecPlan() {
   auto job_exec_plan = spyrecode_json_["JobExecPlan"];
   TORCH_CHECK(job_exec_plan.is_array(), "JobExecPlan must be an array");
@@ -613,9 +698,19 @@ std::unique_ptr<JobPlan> JobPlanBuilder::translateJobExecPlan() {
   const char* env = std::getenv("BUNDLE_SYMBOLIC_ARGS");
   bind_io_addresses_ = (env == nullptr || std::string(env) != "1");
 
+  // Resolve each ComputeOnHost's correction destination before translating, so
+  // the fold below does not depend on the two commands' relative order.
+  pairCorrectionTransfers(job_exec_plan);
+
   // Parse each command in the JobExecPlan and create JobPlanSteps
   std::vector<std::unique_ptr<JobPlanStep>> steps;
   for (size_t i = 0; i < job_exec_plan.size(); ++i) {
+    // The correction H2D is launched by flex from inside launchHostCompute, so
+    // its command is folded into the JobPlanStepHostCompute that produces the
+    // blob and emits no step of its own.
+    if (folded_correction_transfers_.count(i) != 0) {
+      continue;
+    }
     try {
       steps.push_back(translateCommand(job_exec_plan[i], i));
     }
@@ -624,11 +719,11 @@ std::unique_ptr<JobPlan> JobPlanBuilder::translateJobExecPlan() {
     }
   }
 
-  // Two-stream overlap. Emit the plain triple [HostCompute, H2D, Compute]; the
-  // ctors tag it with roles [Prep, Prep, Dev]. When SPYRE_HAZARD_TRACKER is on,
-  // the launch router splits it across S_prep/S_dev and flex inserts the
-  // cross-stream H2D->Compute edge; off keeps every step on S_dev. Every op
-  // keeps pipeline_barrier=true (per-stream FIFO). No plan rewrite here.
+  // Two-stream overlap. Emit the plain pair [HostCompute, Compute]; the ctors
+  // tag it with roles [Prep, Dev]. When SPYRE_HAZARD_TRACKER is on, the launch
+  // router splits it across S_prep/S_dev and flex inserts the cross-stream
+  // correction-H2D->Compute edge; off keeps every step on S_dev. Every op keeps
+  // pipeline_barrier=true (per-stream FIFO). No plan rewrite here.
 
   // TODO(jni): expected_input_shapes to be added once provided in SpyreCode
   // Create pinned_buffers vector from pinned_buffer_map_
@@ -662,7 +757,7 @@ JobPlanBuilder::ValidationResult JobPlanBuilder::validate(
 
   // Validate step ordering: the checker projects the plan into (StepKind,
   // StreamRole) and checks each stream's subsequence -- S_prep must be
-  // HostCompute -> H2D, S_dev must be Compute. See checkJobPlanStepOrdering.
+  // HostCompute, S_dev must be Compute. See checkJobPlanStepOrdering.
   // A legacy plan with no HostCompute stays valid (single-stream paths).
   {
     std::vector<StepKind> kinds;

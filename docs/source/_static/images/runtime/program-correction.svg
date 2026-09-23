@@ -20,7 +20,7 @@
 
   <!-- Title -->
   <text x="380" y="32" text-anchor="middle" class="title">Program correction sequence on a stream</text>
-  <text x="380" y="52" text-anchor="middle" class="caption">Three ordered RuntimeOperations resolve symbolic addresses before the kernel runs.</text>
+  <text x="380" y="52" text-anchor="middle" class="caption">Two ordered JobPlanSteps resolve symbolic addresses before the kernel runs.</text>
 
   <!-- Phase labels -->
   <text class="phase" x="120" y="92" text-anchor="middle">CPU side</text>
@@ -34,16 +34,16 @@
   <!-- Step 1: HostCompute -->
   <rect class="step-host" x="40" y="110" width="200" height="80" rx="8"/>
   <text class="label name" x="140" y="140" text-anchor="middle">JobPlanStepHostCompute</text>
-  <text class="caption" x="140" y="160" text-anchor="middle">CPU callback computes</text>
-  <text class="caption" x="140" y="175" text-anchor="middle">corrections from compiler Hcm</text>
+  <text class="caption" x="140" y="160" text-anchor="middle">flex fills a staging buffer</text>
+  <text class="caption" x="140" y="175" text-anchor="middle">with corrections from Hcm</text>
 
-  <!-- Step 2: H2D -->
+  <!-- Correction H2D: launched by flex inside the HostCompute step above -->
   <rect class="step" x="280" y="110" width="200" height="80" rx="8"/>
-  <text class="label name" x="380" y="140" text-anchor="middle">JobPlanStepH2D</text>
-  <text class="caption" x="380" y="160" text-anchor="middle">DMAs the correction blob</text>
-  <text class="caption" x="380" y="175" text-anchor="middle">to the program region</text>
+  <text class="label name" x="380" y="140" text-anchor="middle">correction H2D</text>
+  <text class="caption" x="380" y="160" text-anchor="middle">part of the HostCompute step</text>
+  <text class="caption" x="380" y="175" text-anchor="middle">blob to the program region</text>
 
-  <!-- Step 3: Compute -->
+  <!-- Step 2: Compute -->
   <rect class="step" x="520" y="110" width="200" height="80" rx="8"/>
   <text class="label name" x="620" y="140" text-anchor="middle">JobPlanStepCompute</text>
   <text class="caption" x="620" y="160" text-anchor="middle">device patches symbolic</text>
@@ -55,8 +55,8 @@
 
   <!-- Shared buffer annotation -->
   <rect class="buffer" x="100" y="250" width="320" height="50" rx="6"/>
-  <text class="label" x="260" y="270" text-anchor="middle" font-weight="600">Pinned host buffer</text>
-  <text class="caption" x="260" y="288" text-anchor="middle">allocated once during prepareKernel; reused across iterations</text>
+  <text class="label" x="260" y="270" text-anchor="middle" font-weight="600">flex staging buffer</text>
+  <text class="caption" x="260" y="288" text-anchor="middle">allocated per launch in launchHostCompute; freed on completion</text>
 
   <!-- Buffer arrows: HostCompute writes, H2D reads -->
   <path class="arrow-buf" d="M 140 190 L 140 250"/>
@@ -65,6 +65,6 @@
   <text class="caption" fill="#b06600" x="388" y="225" text-anchor="start">reads</text>
 
   <!-- Bottom note -->
-  <text x="380" y="340" text-anchor="middle" class="caption">FIFO ordering guarantees H2D consumes the buffer before the next iteration's</text>
-  <text x="380" y="356" text-anchor="middle" class="caption">HostCompute overwrites it, so the same buffer cycles through every tile iteration.</text>
+  <text x="380" y="340" text-anchor="middle" class="caption">torch-spyre allocates no correction buffer: flex allocates a fresh one per launch, so no</text>
+  <text x="380" y="356" text-anchor="middle" class="caption">iteration can overwrite a blob an earlier correction H2D has not finished reading.</text>
 </svg>

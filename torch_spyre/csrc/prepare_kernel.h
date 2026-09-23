@@ -16,12 +16,14 @@
 
 #pragma once
 
+#include <cstdint>
 #include <filesystem>  // NOLINT
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "flex/flex.hpp"
@@ -155,6 +157,28 @@ class JobPlanBuilder {
 
   std::unordered_map<std::string, HostBuffer> pinned_buffer_map_;
 
+  /**
+   * @brief Where a ComputeOnHost's correction blob is DMA'd to on the device.
+   *
+   * SpyreCode expresses program correction as two commands: a ComputeOnHost
+   * that names an output handle, and a DataTransfer H2D that ships that handle
+   * to a program-region address. flex now performs both halves inside
+   * launchHostCompute, so the pair is folded into one JobPlanStepHostCompute
+   * and the destination is read from here instead of from a second step.
+   */
+  struct CorrectionTarget {
+    uint64_t dev_ptr;  ///< Program-segment destination of the correction H2D
+    size_t size;       ///< Byte length the DataTransfer declares
+  };
+
+  /// ComputeOnHost ohandle -> the DataTransfer H2D that consumes it. Filled by
+  /// pairCorrectionTransfers() before any command is translated.
+  std::unordered_map<std::string, CorrectionTarget> correction_targets_;
+
+  /// JobExecPlan indices of the DataTransfer commands folded into a
+  /// JobPlanStepHostCompute. translateJobExecPlan() emits no step for these.
+  std::unordered_set<size_t> folded_correction_transfers_;
+
   std::vector<std::string> inits_;
 
   /// Execute the job preparation plan (allocate + init transfers)
@@ -166,6 +190,11 @@ class JobPlanBuilder {
 
   /// Translate the job execution plan to a JobPlan
   std::unique_ptr<JobPlan> translateJobExecPlan();
+  /// Pair each ComputeOnHost with the DataTransfer H2D that ships its output
+  /// handle, filling correction_targets_ and folded_correction_transfers_.
+  /// Runs over the whole JobExecPlan before translation so a ComputeOnHost can
+  /// read its correction destination regardless of command order.
+  void pairCorrectionTransfers(const nlohmann::json& job_exec_plan);
   /// Translate a single command from the execution plan to a JobPlanStep.
   /// step_idx is the command's position within JobExecPlan; threaded through
   /// so compute steps can disambiguate their profiler kernel name.
@@ -174,7 +203,10 @@ class JobPlanBuilder {
   /// Translate a ComputeOnDevice command to a JobPlanStepCompute
   std::unique_ptr<JobPlanStep> translateComputeOnDevice(
       const nlohmann::json& cmd, size_t step_idx);
-  /// Translate a ComputeOnHost command to a JobPlanStepHostCompute
+  /// Translate a ComputeOnHost command to a JobPlanStepHostCompute. The step
+  /// also carries the paired correction H2D (see correction_targets_), which
+  /// flex launches from inside launchHostCompute, so no separate H2D step is
+  /// emitted for it and no staging buffer is allocated here.
   std::unique_ptr<JobPlanStep> translateComputeOnHost(
       const nlohmann::json& cmd);
   /// Translate a DataTransfer command to a JobPlanStepH2D or JobPlanStepD2H
