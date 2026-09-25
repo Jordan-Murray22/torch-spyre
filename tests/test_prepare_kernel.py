@@ -387,7 +387,9 @@ class TestPrepareKernel:
             # gone), so nothing here depends on the program-region count.
             job_plan = torch_spyre._C.prepare_kernel(spyrecode_dir)
 
-            # Bare split triple: 3 steps, NO event steps inserted.
+            # Verify it has 2 steps (HostCompute-with-H2D merged, Compute)
+            # The adjacent DataTransfer H2D is collapsed into the HostCompute step
+            # by translateComputeOnHostWithH2D
             assert job_plan.num_steps() == 2
             assert [job_plan.get_step_type(i) for i in range(2)] == [
                 "HostCompute",
