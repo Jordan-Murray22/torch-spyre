@@ -1144,7 +1144,10 @@ class TestAllocatorE2E(TestCase):
         Test: torch.accelerator.memory_reserved returns reserved_bytes.all.current.
 
         The generic accelerator API must agree with the internal stat exposed by
-        _spyre_get_allocator_stats.
+        _spyre_get_allocator_stats.  Also verifies that a live Tensor actually
+        drives the counter above the baseline (so the equality check can't pass
+        vacuously on a pair of zeros), and that reserved == allocated (no cache
+        pool).
         """
         device = torch.device("spyre", 0)
 
@@ -1153,10 +1156,20 @@ class TestAllocatorE2E(TestCase):
         internal_reserved = get_allocator_stats()["reserved_bytes"]
         api_reserved = torch.accelerator.memory_reserved(device)
 
+        self.assertGreater(
+            api_reserved,
+            self.initial_stats["reserved_bytes"],
+            "reserved_bytes must be above baseline while a Tensor is live",
+        )
         self.assertEqual(
             api_reserved,
             internal_reserved,
             "torch.accelerator.memory_reserved must match reserved_bytes.all.current",
+        )
+        self.assertEqual(
+            api_reserved,
+            torch.accelerator.memory_allocated(device),
+            "reserved_bytes must equal allocated_bytes (no cache pool)",
         )
 
         del tensor
@@ -1164,11 +1177,14 @@ class TestAllocatorE2E(TestCase):
 
     def test_peak_reserved_reset(self):
         """
-        Test: reset_peak_memory_stats resets reserved_bytes peak to 0.
+        Test: reset_peak_memory_stats resets reserved_bytes peak to the current
+        reserved bytes.
 
-        Allocates a Tensor to drive a non-zero peak, resets the peak stats, and
-        confirms reserved_bytes_peak returns to 0.  Also checks that the
-        accumulated reset clears the accumulated counter.
+        Allocates a Tensor to drive a non-zero peak, resets the peak stats via
+        the public accelerator API, and confirms the peak drops to the current
+        value (not necessarily 0).  Also checks that the accumulated reset
+        clears the accumulated counter, verifying the counter was non-zero
+        before the reset.
         """
         # Allocate to create a non-zero peak
         tensor = torch.empty((8192,), device="spyre", dtype=torch.float32)
@@ -1182,20 +1198,30 @@ class TestAllocatorE2E(TestCase):
             "reserved_bytes peak must be > 0 after an allocation",
         )
 
-        torch.spyre._spyre_reset_peak_stats(0)
+        torch.accelerator.reset_peak_memory_stats("spyre")
         stats_after_peak_reset = get_allocator_stats()
         self.assertEqual(
             stats_after_peak_reset["reserved_bytes_peak"],
-            0,
-            "reserved_bytes peak must be 0 after reset_peak_stats",
+            stats_after_peak_reset["reserved_bytes"],
+            "reserved_bytes peak must equal current reserved bytes after reset",
         )
 
-        # Verify accumulated reset also clears reserved accumulated counter
+        # Verify accumulated reset clears the accumulated counter.
+        # Allocate first so there is something to accumulate, then confirm the
+        # counter is non-zero before resetting (so the assertEqual can't pass
+        # vacuously).
         tensor2 = torch.empty((8192,), device="spyre", dtype=torch.float32)
         del tensor2
         gc.collect()
 
-        torch.spyre._spyre_reset_accumulated_stats(0)
+        raw_stats_before = torch.spyre._spyre_get_allocator_stats(0)
+        self.assertGreater(
+            raw_stats_before.get("reserved_bytes.all.allocated", 0),
+            0,
+            "reserved_bytes.all.allocated must be > 0 before accumulated reset",
+        )
+
+        torch.accelerator.reset_accumulated_memory_stats("spyre")
         raw_stats = torch.spyre._spyre_get_allocator_stats(0)
         accumulated_reserved = raw_stats.get("reserved_bytes.all.allocated", -1)
         self.assertEqual(
@@ -1209,18 +1235,16 @@ class TestAllocatorE2E(TestCase):
         Test: Program allocations do not affect allocated_bytes or reserved_bytes.
 
         SpyreAllocator gates allocated_bytes and reserved_bytes updates on
-        MemoryType::Tensor.  A full Program alloc+release cycle must leave both
-        counters unchanged relative to the pre-allocation baseline.
+        MemoryType::Tensor.  prepare_kernel() issues one MemoryType::Program
+        allocation. executeAllocate() moves the CompositeAddress into
+        job_allocation_ and drops the DataPtr. recordAlloc (N bytes) and
+        recordRelease (0 bytes, because the address was moved out) both fire
+        before prepare_kernel() returns, while job_plan still owns the Program
+        memory. Neither call may change the Tensor-only counters.
 
         The only Python-reachable path that issues a MemoryType::Program
         allocation is prepare_kernel(): its "Allocate" command calls
         SpyreAllocator::allocate(size, AllocationDirective{MemoryType::Program}).
-        Inside executeAllocate(), the DataPtr goes out of scope immediately after
-        the CompositeAddress is moved into job_allocation_, so recordAlloc and
-        recordRelease both fire within prepare_kernel() before it returns. The
-        test therefore snapshots stats before and after the call and asserts they
-        are equal, confirming that the MemoryType::Tensor guard excluded both the
-        alloc and the release from the stat counters.
         """
         import json
         import os
@@ -1231,17 +1255,24 @@ class TestAllocatorE2E(TestCase):
         initial = self.initial_stats
 
         def make_spyrecode_dir(tmpdir):
-            """Write the minimal spyrecode.json that triggers one Program alloc."""
+            """Write a minimal valid spyrecode.json (1 Allocate + 1 InitTransfer)."""
             spyrecode_dir = os.path.join(tmpdir, "spyreCodeDir")
             os.makedirs(spyrecode_dir, exist_ok=True)
             spyrecode_json = {
                 "JobPreparationPlan": [
-                    # This "Allocate" command maps to executeAllocate() in
-                    # prepare_kernel.cpp, which calls
-                    # SpyreAllocator::allocate(size, MemoryType::Program).
-                    # The DataPtr is immediately released inside executeAllocate()
-                    # once the CompositeAddress is moved to job_allocation_.
+                    # executeAllocate() calls
+                    # SpyreAllocator::allocate(size, MemoryType::Program) then
+                    # moves the CompositeAddress into job_allocation_, dropping
+                    # the DataPtr (triggering recordAlloc + recordRelease).
                     {"command": "Allocate", "properties": {"size": "4096"}},
+                    {
+                        "command": "InitTransfer",
+                        "properties": {
+                            "init_bin_file": "init_binary.bin",
+                            "dev_ptr": "120259084288",
+                            "size": "1024",
+                        },
+                    },
                 ],
                 "JobExecPlan": [
                     {
@@ -1252,33 +1283,52 @@ class TestAllocatorE2E(TestCase):
             }
             with open(os.path.join(spyrecode_dir, "spyrecode.json"), "w") as f:
                 json.dump(spyrecode_json, f)
+            with open(os.path.join(spyrecode_dir, "init_binary.bin"), "wb") as f:
+                f.write(b"\x00" * 1024)
             return spyrecode_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             spyrecode_dir = make_spyrecode_dir(tmpdir)
 
-            # prepare_kernel triggers one complete Program alloc+release cycle:
-            # recordAlloc(MemoryType::Program) and recordRelease(MemoryType::Program)
-            # both fire inside executeAllocate() before this call returns.
-            # Stats must be at baseline immediately after the call.
+            free_before, total_before = torch.accelerator.get_memory_info("spyre")
+
             job_plan = torch_spyre._C.prepare_kernel(spyrecode_dir)
+
+            # The Program allocation is still owned by job_plan at this point.
+            self.assertGreater(
+                job_plan.job_allocation_size(),
+                0,
+                "job_plan must own a non-zero Program allocation after prepare_kernel",
+            )
+
+            free_live, total_live = torch.accelerator.get_memory_info("spyre")
+            self.assertEqual(
+                free_live,
+                free_before,
+                "Program allocation must not change Tensor free bytes",
+            )
+            self.assertEqual(
+                total_live,
+                total_before,
+                "Program allocation must not change Tensor total bytes",
+            )
 
             stats_after = get_allocator_stats()
 
             self.assertEqual(
                 stats_after["allocated_bytes"],
                 initial["allocated_bytes"],
-                "allocated_bytes must not change after a Program alloc+release cycle",
+                "allocated_bytes must not change after a Program allocation",
             )
             self.assertEqual(
                 stats_after["reserved_bytes"],
                 initial["reserved_bytes"],
-                "reserved_bytes must not change after a Program alloc+release cycle",
+                "reserved_bytes must not change after a Program allocation",
             )
             self.assertEqual(
                 stats_after["num_allocs"],
                 initial["num_allocs"],
-                "allocation count must not change after a Program alloc+release cycle",
+                "allocation count must not change after a Program allocation",
             )
 
             del job_plan
