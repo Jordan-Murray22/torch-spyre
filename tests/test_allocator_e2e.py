@@ -1248,11 +1248,11 @@ class TestAllocatorE2E(TestCase):
         allocation is prepare_kernel(): its "Allocate" command calls
         SpyreAllocator::allocate(size, AllocationDirective{MemoryType::Program}).
 
-        Note: get_memory_info() free bytes reflect the full Flex Tensor region,
-        including Flex-internal buffers that bypass SpyreAllocator. The free
-        check therefore uses assertLessEqual rather than assertEqual, as a
-        background Flex allocation (e.g. TimestampCalibrator) could legitimately
-        reduce free bytes between the two snapshots.
+        Note: get_memory_info() free bytes cover the whole Flex Tensor region,
+        including Flex-internal buffers that bypass SpyreAllocator. With
+        FLEX_SKIP_TIMESTAMP_CALIBRATION=0, the TimestampCalibrator can allocate
+        such a buffer on a background thread, so the exact free-bytes check is
+        skipped in that configuration.
         """
         import json
         import os
@@ -1310,15 +1310,17 @@ class TestAllocatorE2E(TestCase):
             )
 
             free_live, total_live = torch.accelerator.get_memory_info("spyre")
-            # Use assertLessEqual rather than assertEqual: Flex-internal Tensor
-            # allocations (e.g. TimestampCalibrator) bypass SpyreAllocator and
-            # can reduce free bytes between the two snapshots. A Program alloc
-            # can only decrease or leave free bytes unchanged, never increase.
-            self.assertLessEqual(
-                free_live,
-                free_before,
-                "Program allocation must not increase Tensor free bytes",
-            )
+            # With FLEX_SKIP_TIMESTAMP_CALIBRATION=0, Flex's TimestampCalibrator
+            # can allocate a Tensor-region buffer on a background thread after
+            # the first device launch, so an exact free-bytes comparison is
+            # unreliable there. By default calibration only arms for a profiling
+            # session, and this test opens none.
+            if os.environ.get("FLEX_SKIP_TIMESTAMP_CALIBRATION") != "0":
+                self.assertEqual(
+                    free_live,
+                    free_before,
+                    "Program allocation must not consume Tensor-region free bytes",
+                )
             self.assertEqual(
                 total_live,
                 total_before,
