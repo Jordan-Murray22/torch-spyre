@@ -78,10 +78,10 @@ c10::CachingDeviceAllocator::DeviceStats SpyreAllocator::getDeviceStats(
 
 std::pair<size_t, size_t> SpyreAllocator::getMemoryInfo(
     c10::DeviceIndex device) {
-  // `device` is required by the DeviceAllocator interface but is not used:
-  // RuntimeContext::getInstance() has no device-index parameter and always
-  // returns the single active device's context, so getFlexAllocator() returns
-  // the same FlexAllocator regardless of which index the caller passes.
+  int64_t active_device_id = flex::RuntimeContext::getInstance()->getDeviceID();
+  TORCH_CHECK(static_cast<int64_t>(device) == active_device_id,
+              "SpyreAllocator::getMemoryInfo: requested device index ", device,
+              " does not match the active device (", active_device_id, ")");
   auto flex_alloc = getFlexAllocator();
   flex::MemoryStats mem_stats =
       flex_alloc->getMemoryStats(flex::MemoryType::Tensor);
@@ -110,18 +110,23 @@ void SpyreAllocator::resetPeakStats(c10::DeviceIndex device) {
 
 void SpyreAllocator::recordAlloc(size_t nbytes, void* data, int device_id,
                                  flex::MemoryType memory_type) {
+  // User-visible accounting (stats and profiler) is Tensor-only.
+  // Program and other non-Tensor allocations must not appear in user-visible
+  // memory stats: on release the CompositeAddress has already been moved out,
+  // so nbytes would be 0 and would leave an unmatched +N in the profiler.
+  if (memory_type != flex::MemoryType::Tensor) {
+    return;
+  }
   int64_t total_allocated;
   int64_t total_reserved;
   {
     std::lock_guard<std::mutex> lock(stats_mutex_);
-    if (memory_type == flex::MemoryType::Tensor) {
-      c10::CachingAllocator::for_each_selected_stat_type(
-          stat_types, [&](size_t stat_type) {
-            stats_.allocation[stat_type].increase(1);
-            stats_.allocated_bytes[stat_type].increase(nbytes);
-            stats_.reserved_bytes[stat_type].increase(nbytes);
-          });
-    }
+    c10::CachingAllocator::for_each_selected_stat_type(
+        stat_types, [&](size_t stat_type) {
+          stats_.allocation[stat_type].increase(1);
+          stats_.allocated_bytes[stat_type].increase(nbytes);
+          stats_.reserved_bytes[stat_type].increase(nbytes);
+        });
     total_allocated = stats_
                           .allocated_bytes[static_cast<size_t>(
                               c10::CachingAllocator::StatType::AGGREGATE)]
@@ -142,18 +147,23 @@ void SpyreAllocator::recordAlloc(size_t nbytes, void* data, int device_id,
 
 void SpyreAllocator::recordRelease(size_t nbytes, void* data, int device_id,
                                    flex::MemoryType memory_type) {
+  // User-visible accounting (stats and profiler) is Tensor-only.
+  // Program and other non-Tensor allocations must not appear in user-visible
+  // memory stats: on release the CompositeAddress has already been moved out,
+  // so nbytes would be 0 and would leave an unmatched +N in the profiler.
+  if (memory_type != flex::MemoryType::Tensor) {
+    return;
+  }
   int64_t total_allocated;
   int64_t total_reserved;
   {
     std::lock_guard<std::mutex> lock(stats_mutex_);
-    if (memory_type == flex::MemoryType::Tensor) {
-      c10::CachingAllocator::for_each_selected_stat_type(
-          stat_types, [&](size_t stat_type) {
-            stats_.allocation[stat_type].decrease(1);
-            stats_.allocated_bytes[stat_type].decrease(nbytes);
-            stats_.reserved_bytes[stat_type].decrease(nbytes);
-          });
-    }
+    c10::CachingAllocator::for_each_selected_stat_type(
+        stat_types, [&](size_t stat_type) {
+          stats_.allocation[stat_type].decrease(1);
+          stats_.allocated_bytes[stat_type].decrease(nbytes);
+          stats_.reserved_bytes[stat_type].decrease(nbytes);
+        });
     total_allocated = stats_
                           .allocated_bytes[static_cast<size_t>(
                               c10::CachingAllocator::StatType::AGGREGATE)]
