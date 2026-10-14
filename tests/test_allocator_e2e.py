@@ -1041,7 +1041,7 @@ class TestAllocatorE2E(TestCase):
         NotImplementedError) and returns a plausible pair of values where
         total > 0 and free <= total.
         """
-        device = torch.device("spyre", 0)
+        device = torch.device("spyre", torch.accelerator.current_device_index())
         free, total = torch.accelerator.get_memory_info(device)
 
         self.assertGreater(
@@ -1301,6 +1301,7 @@ class TestAllocatorE2E(TestCase):
             free_before, total_before = torch.accelerator.get_memory_info("spyre")
 
             job_plan = torch_spyre._C.prepare_kernel(spyrecode_dir)
+            torch.spyre.current_stream().synchronize()
 
             # The Program allocation is still owned by job_plan at this point.
             self.assertGreater(
